@@ -1,6 +1,6 @@
 """
 Master Orchestrator
-Connects Market Stream, SMC Engine, Fibonacci Engine, Risk Manager, Demo Desk, and Agency Engine.
+Connects Market Stream, SMC Engine, Fibonacci Engine, Risk Manager, Demo Desk, Exness Bridge, and Agency Engine.
 Runs continuously in a 24/7 background worker thread.
 """
 import time
@@ -13,6 +13,7 @@ from app.trading.smc_engine import SMCEngine
 from app.trading.fibonacci_engine import FibonacciEngine
 from app.trading.risk_manager import RiskManager
 from app.trading.demo_account import DemoAccount
+from app.trading.exness_bridge import ExnessBridge
 from app.agency.social_engine import SocialEngine
 from app.agency.lead_manager import LeadManager
 
@@ -23,6 +24,7 @@ class MasterOrchestrator:
         self.fib = FibonacciEngine()
         self.risk = RiskManager(risk_percent=1.0, min_rrr=2.5)
         self.account = DemoAccount(initial_capital=50000.0)
+        self.exness = ExnessBridge()
         self.social = SocialEngine()
         self.leads = LeadManager()
         
@@ -47,6 +49,9 @@ class MasterOrchestrator:
         closed_trades = self.account.update_open_trades(current_price)
         for ct in closed_trades:
             self.log(f"🔔 TRADE SETTLED: {ct['id']} | Outcome: {ct['status']} | PnL: ${ct.get('realized_pnl', 0):+,.2f}")
+            if self.exness.connected:
+                self.exness.balance = self.account.balance
+                self.exness.equity = self.account.equity
 
         # 2. SMC Market Structure Analysis
         candles = self.market.get_recent_candles(interval="1h", limit=30)
@@ -75,7 +80,6 @@ class MasterOrchestrator:
         }
 
         # 4. Check for High-Probability Setup (Golden Pocket + Discount + Trend Aligned)
-        # Only open if we don't already have an active open trade
         if len(self.account.open_trades) == 0 and "golden_pocket_ote" in fib_res:
             ote = fib_res["golden_pocket_ote"]
             
@@ -95,6 +99,10 @@ class MasterOrchestrator:
                 if trade_plan:
                     order = self.account.open_trade(trade_plan, symbol=ticker["symbol"])
                     self.log(f"🚀 SMC LONG EXECUTED: {order['id']} at ${entry:,.2f} | SL: ${sl:,.2f} | TP: ${tp:,.2f} | RRR: 1:{trade_plan['risk_reward_ratio']} | Risk: ${trade_plan['dollar_risk']}")
+                    
+                    if self.exness.connected:
+                        ex_res = self.exness.sync_trade_execution(order)
+                        self.log(f"🔗 EXNESS SYNC: {ex_res['message']}")
 
             # Bearish Trend setup
             elif trend == "BEARISH" and "PREMIUM" in zone_status:
@@ -112,15 +120,18 @@ class MasterOrchestrator:
                 if trade_plan:
                     order = self.account.open_trade(trade_plan, symbol=ticker["symbol"])
                     self.log(f"🩸 SMC SHORT EXECUTED: {order['id']} at ${entry:,.2f} | SL: ${sl:,.2f} | TP: ${tp:,.2f} | RRR: 1:{trade_plan['risk_reward_ratio']} | Risk: ${trade_plan['dollar_risk']}")
+                    
+                    if self.exness.connected:
+                        ex_res = self.exness.sync_trade_execution(order)
+                        self.log(f"🔗 EXNESS SYNC: {ex_res['message']}")
 
     def start_background_loop(self):
         """Starts 24/7 autonomous loop."""
         if self.is_running:
             return
         self.is_running = True
-        self.log("Institutional SMC Quant Engine & Agency Desk Started 24/7.")
+        self.log("Institutional SMC Quant Engine, Exness Bridge & Agency Desk Started 24/7.")
 
-        # Seed initial content
         self.social.generate_content("BULLISH", "$65,000")
 
         def loop():
@@ -130,7 +141,6 @@ class MasterOrchestrator:
                     self.run_trading_cycle()
                     counter += 1
                     
-                    # Generate social post every ~15 minutes
                     if counter % 45 == 0:
                         trend = self.last_analysis.get("trend", "BULLISH")
                         price = f"${self.last_analysis.get('current_price', 0):,.2f}"
