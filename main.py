@@ -27,10 +27,36 @@ def get_telemetry():
         "logs": orchestrator.system_logs
     })
 
+class TaskInput(BaseModel):
+    task: str
+
+@app.post("/api/task")
+def assign_task(data: TaskInput):
+    task_text = data.task.strip()
+    orchestrator.send_agent_message("You (Director)", "Firm Director", f"🎯 NEW DIRECTIVE: {task_text}")
+    
+    # Context-aware agent responses
+    if "coffee" in task_text.lower():
+        orchestrator.send_agent_message("Mia", "Viral Copywriter", "Heading to the coffee bar! ☕")
+        orchestrator.send_agent_message("Leo", "Execution Trader", "Grabbing a coffee, terminal running trailing stop.")
+    elif "scan" in task_text.lower() or "smc" in task_text.lower():
+        orchestrator.send_agent_message("Alex", "Chief Quant", "Scanning 4H/1H candles for BOS and Order Blocks...")
+        orchestrator.send_agent_message("David", "Fibonacci Specialist", "Calculating 0.618-0.786 Golden Pocket OTE levels.")
+    elif "exness" in task_text.lower() or "sync" in task_text.lower():
+        orchestrator.exness.refresh_balance()
+        orchestrator.send_agent_message("Leo", "Execution Trader", f"Exness MT5 verified: Account #{orchestrator.exness.account_id} on {orchestrator.exness.server} ($ {orchestrator.exness.balance:,.2f})")
+    elif "twitter" in task_text.lower() or "brand" in task_text.lower() or "post" in task_text.lower():
+        orchestrator.branding.generate_firm_content("BULLISH", "$65,000")
+        orchestrator.send_agent_message("Sophia", "Brand Director", "Campaign approved. Mia is drafting the thread now.")
+    else:
+        orchestrator.send_agent_message("Alex", "Chief Quant", f"Directive received: '{task_text}'. Team executing now.")
+
+    return {"status": "success", "message": "Task dispatched to team"}
+
 class ExnessConnectInput(BaseModel):
     account_id: str
-    server: Optional[str] = "Exness-MT5Trial"
-    balance: Optional[float] = 50000.0
+    server: Optional[str] = "Exness-MT5Trial7"
+    balance: Optional[float] = 20.21
 
 @app.post("/api/exness/connect")
 def connect_exness(data: ExnessConnectInput):
@@ -39,9 +65,7 @@ def connect_exness(data: ExnessConnectInput):
         server=data.server,
         balance=data.balance
     )
-    orchestrator.account.balance = data.balance
-    orchestrator.account.equity = data.balance
-    orchestrator.send_agent_message("Leo", "Execution Trader", f"Exness Demo Linked! Account #{data.account_id} on {data.server} ($ {data.balance:,.2f})")
+    orchestrator.send_agent_message("Leo", "Execution Trader", f"Exness MT5 Linked: Account #{data.account_id} on {data.server} ($ {orchestrator.exness.balance:,.2f})")
     return {"status": "success", "exness": res}
 
 @app.get("/", response_class=HTMLResponse)
@@ -52,525 +76,682 @@ def virtual_office_app():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>3D Virtual AI Trading Floor & Media Office</title>
-        <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-        <!-- Three.js & OrbitControls for 3D Virtual Office -->
+        <title>AI Agent Virtual Office · 3D Quant Trading Floor</title>
+        <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <!-- Three.js + OrbitControls -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
         <style>
             :root {
-                --bg: #05070d;
-                --panel: rgba(13, 18, 30, 0.92);
-                --border: #1a2438;
+                --bg: #07090f;
+                --sidebar-bg: rgba(12, 16, 28, 0.94);
+                --card-bg: #0d121f;
+                --card-border: #1a2236;
                 --accent-blue: #38bdf8;
                 --accent-green: #10b981;
                 --accent-gold: #f59e0b;
                 --accent-purple: #a855f7;
                 --accent-red: #f43f5e;
-                --text: #f1f5f9;
-                --muted: #8494ab;
+                --text-main: #f8fafc;
+                --text-muted: #8292a8;
             }
             * { box-sizing: border-box; }
             body, html {
                 margin: 0; padding: 0; width: 100%; height: 100%;
-                overflow: hidden; background: var(--bg); color: var(--text);
+                overflow: hidden; background: var(--bg); color: var(--text-main);
                 font-family: 'Plus Jakarta Sans', sans-serif;
             }
 
-            /* Main Layout Grid */
-            #app-layout {
+            /* Main Layout */
+            #app-root {
                 display: grid;
-                grid-template-columns: 320px 1fr 340px;
+                grid-template-rows: 54px 1fr;
                 width: 100vw; height: 100vh;
+            }
+
+            /* Top App Bar */
+            .top-bar {
+                background: #090d17;
+                border-bottom: 1px solid var(--card-border);
+                display: flex; justify-content: space-between; align-items: center;
+                padding: 0 20px; z-index: 50;
+            }
+            .brand-badge {
+                display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 15px;
+            }
+            .brand-pill {
+                background: rgba(56, 189, 248, 0.15); color: var(--accent-blue);
+                padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;
+            }
+            .top-nav { display: flex; gap: 6px; }
+            .nav-link {
+                background: transparent; border: none; color: var(--text-muted);
+                padding: 7px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
+                cursor: pointer; transition: all 0.2s;
+            }
+            .nav-link.active, .nav-link:hover {
+                background: #141c2e; color: #fff;
+            }
+            .top-right-status {
+                display: flex; align-items: center; gap: 12px; font-size: 12px;
+            }
+            .pulse-dot {
+                width: 8px; height: 8px; border-radius: 50%; background: var(--accent-green);
+                box-shadow: 0 0 10px var(--accent-green); animation: pulse 1.6s infinite;
+            }
+            @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+
+            /* Three Column Floor Layout */
+            .main-content {
+                display: grid;
+                grid-template-columns: 310px 1fr 340px;
+                height: calc(100vh - 54px);
                 position: relative;
             }
 
-            /* Left & Right Sidebars */
-            .sidebar {
-                background: var(--panel);
-                backdrop-filter: blur(16px);
-                border-right: 1px solid var(--border);
-                display: flex; flex-direction: column;
-                z-index: 10; padding: 18px;
-                overflow-y: auto; height: 100vh;
+            /* Left Sidebar: Team & Tasks */
+            .panel-left {
+                background: var(--sidebar-bg);
+                backdrop-filter: blur(12px);
+                border-right: 1px solid var(--card-border);
+                padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+                z-index: 20;
             }
-            .sidebar-right {
-                border-right: none;
-                border-left: 1px solid var(--border);
+            /* Right Sidebar: Agent Communication */
+            .panel-right {
+                background: var(--sidebar-bg);
+                backdrop-filter: blur(12px);
+                border-left: 1px solid var(--card-border);
+                padding: 16px; overflow-y: auto; display: flex; flex-direction: column;
+                z-index: 20;
+            }
+
+            /* Metric Cards */
+            .metrics-grid {
+                display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+            }
+            .metric-card {
+                background: var(--card-bg); border: 1px solid var(--card-border);
+                border-radius: 10px; padding: 10px 12px;
+            }
+            .metric-label { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; }
+            .metric-val { font-size: 18px; font-weight: 800; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+
+            /* Exness Connected Banner */
+            .exness-banner {
+                background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 78, 59, 0.2));
+                border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px;
+                padding: 12px; display: flex; justify-content: space-between; align-items: center;
+            }
+
+            /* Task Input Section */
+            .task-box {
+                background: var(--card-bg); border: 1px solid var(--card-border);
+                border-radius: 10px; padding: 12px;
+            }
+            .task-input {
+                width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #243048;
+                background: #07090f; color: #fff; font-family: inherit; font-size: 12.5px;
+                margin-top: 6px; margin-bottom: 8px;
+            }
+            .task-btn {
+                width: 100%; padding: 8px; border-radius: 6px; border: none;
+                background: var(--accent-blue); color: #000; font-weight: 700; font-size: 12px;
+                cursor: pointer;
+            }
+            .preset-btn {
+                background: #111726; border: 1px solid var(--card-border); color: #cbd5e1;
+                font-size: 11px; padding: 6px 10px; border-radius: 6px; cursor: pointer;
+                text-align: left; width: 100%; margin-top: 5px; transition: all 0.2s;
+            }
+            .preset-btn:hover { background: #1a2338; color: #fff; border-color: var(--accent-blue); }
+
+            /* Agent Activity List */
+            .agent-item {
+                display: flex; justify-content: space-between; align-items: center;
+                background: #090d17; border: 1px solid var(--card-border);
+                border-radius: 8px; padding: 9px 12px; font-size: 12px; margin-bottom: 6px;
+            }
+            .agent-status-tag {
+                font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px;
             }
 
             /* 3D Viewport */
-            #canvas-container {
-                position: relative;
-                width: 100%; height: 100%;
-                overflow: hidden;
+            #viewport-3d {
+                position: relative; width: 100%; height: 100%; overflow: hidden;
             }
             #webgl-canvas { width: 100%; height: 100%; display: block; }
 
-            /* HUD Floating Over 3D Canvas */
-            .hud-overlay {
+            /* Floating Floor HUD */
+            .floor-hud {
                 position: absolute; top: 16px; left: 16px; right: 16px;
                 display: flex; justify-content: space-between; align-items: center;
-                pointer-events: none; z-index: 20;
+                pointer-events: none; z-index: 10;
             }
-            .hud-card {
-                background: rgba(10, 15, 26, 0.85);
-                backdrop-filter: blur(12px);
-                border: 1px solid var(--border);
-                border-radius: 12px; padding: 10px 18px;
-                pointer-events: auto; display: flex; align-items: center; gap: 14px;
+            .hud-pill {
+                background: rgba(9, 13, 23, 0.88); backdrop-filter: blur(10px);
+                border: 1px solid var(--card-border); border-radius: 30px;
+                padding: 7px 16px; font-size: 12px; font-weight: 700;
+                display: flex; align-items: center; gap: 8px; pointer-events: auto;
             }
-            .cam-controls {
+
+            /* Camera Preset Buttons (Bottom Overlay) */
+            .camera-dock {
                 position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-                display: flex; gap: 8px; z-index: 20; background: rgba(10,15,26,0.88);
-                padding: 6px; border-radius: 30px; border: 1px solid var(--border);
+                background: rgba(9, 13, 23, 0.9); backdrop-filter: blur(14px);
+                border: 1px solid var(--card-border); border-radius: 30px;
+                padding: 6px 12px; display: flex; gap: 6px; z-index: 10;
             }
-            .cam-btn {
-                background: transparent; border: none; color: var(--muted);
-                padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700;
+            .dock-btn {
+                background: transparent; border: none; color: var(--text-muted);
+                padding: 6px 14px; border-radius: 20px; font-size: 11.5px; font-weight: 700;
                 cursor: pointer; transition: all 0.2s;
             }
-            .cam-btn.active, .cam-btn:hover { background: var(--accent-blue); color: #000; }
+            .dock-btn.active, .dock-btn:hover { background: var(--accent-blue); color: #000; }
 
-            /* Typography & Cards */
-            .brand-header h2 { margin: 0; font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
-            .brand-header p { margin: 4px 0 16px 0; font-size: 12px; color: var(--muted); }
-            .section-label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin: 16px 0 8px 0; }
-            
-            .stat-box {
-                background: #080c14; border: 1px solid var(--border); border-radius: 10px;
-                padding: 12px 14px; margin-bottom: 10px;
+            /* Right Panel: Chat Stream */
+            .chat-list {
+                flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+                margin-top: 10px; padding-right: 4px;
             }
-            .stat-title { font-size: 11px; color: var(--muted); text-transform: uppercase; }
-            .stat-val { font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono', monospace; margin: 4px 0; }
-
-            .badge {
-                padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
-                display: inline-flex; align-items: center; gap: 6px;
+            .chat-bubble {
+                background: #090e18; border: 1px solid var(--card-border);
+                border-radius: 9px; padding: 10px 12px; font-size: 12px; line-height: 1.45;
+                animation: slideUp 0.25s ease;
             }
-            .badge-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
-            .badge-gold { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
-
-            /* Agent Roster List */
-            .agent-row {
-                display: flex; align-items: center; justify-content: space-between;
-                background: #080c14; border: 1px solid var(--border); border-radius: 8px;
-                padding: 10px; margin-bottom: 8px; font-size: 12px;
-            }
-            .agent-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-
-            /* Agent Chat Stream (Right Sidebar) */
-            .chat-stream {
-                flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
-                padding-right: 4px; font-size: 12.5px;
-            }
-            .chat-msg {
-                background: #080c14; border: 1px solid var(--border); border-radius: 10px;
-                padding: 10px 12px; line-height: 1.45; animation: fadeIn 0.3s ease;
-            }
-            .chat-meta { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); margin-bottom: 4px; }
+            .chat-meta { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px; }
             .chat-author { font-weight: 700; color: var(--accent-blue); }
-            .chat-text { color: #cbd5e1; }
-            @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-            /* Buttons & Modal */
-            .btn-action {
-                width: 100%; padding: 10px; border-radius: 8px; border: none;
-                background: var(--accent-blue); color: #000; font-weight: 700; font-size: 12.5px;
-                cursor: pointer; transition: opacity 0.2s; margin-top: 6px;
-            }
-            .btn-action:hover { opacity: 0.9; }
-
-            .modal-bg {
-                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-                background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
-                display: none; align-items: center; justify-content: center; z-index: 1000;
-            }
-            .modal-card {
-                background: #0e1320; border: 1px solid var(--border); border-radius: 14px;
-                padding: 24px; width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
-            }
-            .input-group { margin-bottom: 14px; }
-            .input-group label { display: block; font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 5px; }
-            .input-group input, .input-group select {
-                width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border);
-                background: #070a12; color: #fff; font-family: inherit; font-size: 13px;
-            }
-
-            @media (max-width: 1024px) {
-                #app-layout { grid-template-columns: 280px 1fr 280px; }
+            @media (max-width: 1080px) {
+                .main-content { grid-template-columns: 270px 1fr 290px; }
             }
         </style>
     </head>
     <body>
-        <div id="app-layout">
-            <!-- LEFT SIDEBAR: INSTITUTIONAL CONTROL -->
-            <div class="sidebar">
-                <div class="brand-header">
-                    <h2>🏛️ AI Trading Floor</h2>
-                    <p>Proprietary SMC Desk & Media Studio</p>
+        <div id="app-root">
+            <!-- TOP APP BAR -->
+            <header class="top-bar">
+                <div class="brand-badge">
+                    <span>🏢 AI Agent Virtual Office</span>
+                    <span class="brand-pill">7 AGENTS ONLINE</span>
                 </div>
-
-                <div class="stat-box">
-                    <div class="stat-title">Exness Demo Balance</div>
-                    <div id="acc-balance" class="stat-val">$50,000.00</div>
-                    <div id="exness-tag" class="badge badge-gold">Exness: Standby</div>
+                <nav class="top-nav">
+                    <button class="nav-link active" onclick="setCameraView('overview')">Overview</button>
+                    <button class="nav-link" onclick="setCameraView('walkin')">Walk In</button>
+                    <button class="nav-link" onclick="setCameraView('trading')">Trading Floor</button>
+                    <button class="nav-link" onclick="setCameraView('branding')">Media Studio</button>
+                    <button class="nav-link" onclick="setCameraView('manager')">Manager Office</button>
+                    <button class="nav-link" onclick="setCameraView('coffee')">Lounge & Coffee</button>
+                </nav>
+                <div class="top-right-status">
+                    <div class="pulse-dot"></div>
+                    <span id="exness-quick-badge" style="color: var(--accent-green); font-weight: 700;">Exness MT5: #434353249</span>
                 </div>
+            </header>
 
-                <button class="btn-action" onclick="openExnessModal()">⚙️ Link Exness MT5 Demo</button>
-
-                <div class="section-label">Active Market Pulse</div>
-                <div class="stat-box" style="margin-bottom: 6px;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span class="stat-title">BTC/USDT</span>
-                        <span id="btc-chg" style="color: var(--accent-green); font-size: 11px; font-weight: 700;">+0.00%</span>
+            <!-- THREE COLUMN CONTENT -->
+            <main class="main-content">
+                <!-- LEFT SIDEBAR -->
+                <aside class="panel-left">
+                    <!-- Metrics Row -->
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-label">Active Agents</div>
+                            <div class="metric-val" style="color: var(--accent-green);">7 / 7</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Tasks Executed</div>
+                            <div class="metric-val">32</div>
+                        </div>
                     </div>
-                    <div id="btc-price" class="stat-val" style="font-size: 18px;">$65,000.00</div>
-                    <div style="font-size: 11.5px; color: var(--muted); margin-top: 4px;">
-                        Trend: <strong id="htf-trend" style="color: var(--accent-green);">BULLISH</strong> | 
-                        Zone: <strong id="eq-zone" style="color: var(--accent-gold);">DISCOUNT</strong>
+
+                    <!-- Exness Demo Card -->
+                    <div class="exness-banner">
+                        <div>
+                            <div style="font-size: 10.5px; font-weight: 700; color: var(--accent-green); text-transform: uppercase;">Exness MT5 Trial7</div>
+                            <div id="exness-bal-display" style="font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono';">$20.21 USD</div>
+                            <small style="color: var(--text-muted); font-size: 11px;">Account: #434353249 · 1:2000</small>
+                        </div>
+                        <button onclick="dispatchPresetTask('Sync Exness MT5 Balance & Orders')" style="background: rgba(16,185,129,0.2); border: 1px solid var(--accent-green); color: var(--accent-green); border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 11px; cursor: pointer;">Sync</button>
+                    </div>
+
+                    <!-- Task Assignment -->
+                    <div class="task-box">
+                        <div style="font-size: 11.5px; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Command AI Workforce</div>
+                        <input type="text" id="custom-task-input" class="task-input" placeholder="e.g. Scan BTC 4H Golden Pocket...">
+                        <button class="task-btn" onclick="submitCustomTask()">▶ START DIRECTIVE</button>
+
+                        <div style="margin-top: 10px; font-size: 11px; color: var(--text-muted); font-weight: 700;">QUICK DIRECTIVES:</div>
+                        <button class="preset-btn" onclick="dispatchPresetTask('Execute SMC 4H Golden Pocket Scan')">⚡ Scan BTC 4H SMC Golden Pocket</button>
+                        <button class="preset-btn" onclick="dispatchPresetTask('Draft Viral Twitter Breakdown Thread')">📢 Launch Viral Twitter Breakdown</button>
+                        <button class="preset-btn" onclick="dispatchPresetTask('Send Team on 2-Minute Coffee Break')">☕ Send Team to Coffee Bar</button>
+                    </div>
+
+                    <!-- Agent Activity Roster -->
+                    <div>
+                        <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Agent Activity</div>
+                        <div id="agent-roster-container"></div>
+                    </div>
+                </aside>
+
+                <!-- CENTER 3D VIEWPORT -->
+                <div id="viewport-3d">
+                    <div class="floor-hud">
+                        <div class="hud-pill">
+                            <span style="color: var(--text-muted);">MARKET:</span>
+                            <span id="hud-btc" style="color: #fff; font-family: 'JetBrains Mono';">$65,000.00</span>
+                            <span id="hud-trend" style="color: var(--accent-green);">BULLISH</span>
+                        </div>
+                        <div class="hud-pill">
+                            <span style="color: var(--text-muted);">SMC ZONE:</span>
+                            <span id="hud-zone" style="color: var(--accent-gold);">DISCOUNT (0.618 OTE)</span>
+                        </div>
+                    </div>
+
+                    <canvas id="webgl-canvas"></canvas>
+
+                    <!-- Camera Views Dock -->
+                    <div class="camera-dock">
+                        <button class="dock-btn active" onclick="setCameraView('overview')">Overview</button>
+                        <button class="dock-btn" onclick="setCameraView('trading')">Trading Cluster</button>
+                        <button class="dock-btn" onclick="setCameraView('branding')">Media Studio</button>
+                        <button class="dock-btn" onclick="setCameraView('manager')">Manager Office</button>
+                        <button class="dock-btn" onclick="setCameraView('coffee')">Coffee Bar</button>
+                        <button class="dock-btn" onclick="setCameraView('wall')">Big LED Wall</button>
                     </div>
                 </div>
 
-                <div class="section-label">Workforce Status (7/7 Online)</div>
-                <div id="agent-roster"></div>
-            </div>
-
-            <!-- CENTER: 3D VIRTUAL OFFICE FLOOR -->
-            <div id="canvas-container">
-                <div class="hud-overlay">
-                    <div class="hud-card">
-                        <span style="font-size: 12px; font-weight: 700; color: var(--muted);">FLOOR STATUS:</span>
-                        <span class="badge badge-green">● 7 AGENTS ACTIVE</span>
+                <!-- RIGHT SIDEBAR: AGENT COMMUNICATION (INTER-COM) -->
+                <aside class="panel-right">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--card-border); padding-bottom: 10px;">
+                        <div>
+                            <div style="font-size: 12px; font-weight: 800; text-transform: uppercase;">Agent Communication</div>
+                            <small style="color: var(--text-muted); font-size: 11px;">Internal Team Coordination</small>
+                        </div>
+                        <span class="brand-pill" style="color: var(--accent-green); background: rgba(16,185,129,0.15);">● LIVE</span>
                     </div>
-                    <div class="hud-card">
-                        <span style="font-size: 12px; font-weight: 700; color: var(--muted);">SMC SETUP:</span>
-                        <span id="hud-setup-badge" style="font-size: 12px; font-weight: 700; color: var(--accent-blue);">0.618 Golden Pocket Active</span>
+
+                    <div class="chat-list" id="chat-stream-container"></div>
+
+                    <!-- Bottom Trade Setup Tag -->
+                    <div style="background: #090e18; border: 1px solid var(--card-border); border-radius: 8px; padding: 10px; margin-top: 10px; font-size: 11px;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">Current Active Setup:</span>
+                            <span style="color: var(--accent-green); font-weight: 700;">SETUP 3.1 (+1,026)</span>
+                        </div>
+                        <div style="margin-top: 4px; color: #cbd5e1;">Exness MT5: Auto-hedging enabled · 1% max risk shield active.</div>
                     </div>
-                </div>
-
-                <!-- 3D Canvas -->
-                <canvas id="webgl-canvas"></canvas>
-
-                <!-- Camera Switcher -->
-                <div class="cam-controls">
-                    <button class="cam-btn active" onclick="setCameraView('iso')">Isometric Floor</button>
-                    <button class="cam-btn" onclick="setCameraView('trading')">Trading Desk</button>
-                    <button class="cam-btn" onclick="setCameraView('branding')">Media Studio</button>
-                    <button class="cam-btn" onclick="setCameraView('wall')">LED Wall</button>
-                </div>
-            </div>
-
-            <!-- RIGHT SIDEBAR: REAL-TIME AGENT COMMUNICATION (INTER-COM) -->
-            <div class="sidebar sidebar-right">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div class="section-label" style="margin: 0;">Agent Inter-Com</div>
-                    <span class="badge badge-green" style="font-size: 10px;">LIVE CHAT</span>
-                </div>
-                <div style="font-size: 11.5px; color: var(--muted); margin-bottom: 12px;">
-                    Autonomous coordination between Quant Desk & Media Division.
-                </div>
-
-                <!-- Live Chat Feed -->
-                <div class="chat-stream" id="chat-stream">
-                    <div class="chat-msg">
-                        <div class="chat-meta"><span class="chat-author">System</span><span>00:00</span></div>
-                        <div class="chat-text">Connecting to 3D Virtual Trading Floor inter-com stream...</div>
-                    </div>
-                </div>
-
-                <div class="section-label" style="margin-top: 16px;">Latest Branding Post</div>
-                <div id="latest-brand-card" style="background:#080c14; border:1px solid var(--border); border-radius:8px; padding:10px; font-size:11.5px;">
-                    <div style="color: var(--accent-purple); font-weight: 700; margin-bottom: 4px;">Twitter / X Thread</div>
-                    <div id="latest-brand-text" style="color: #cbd5e1; line-height: 1.4;">Analyzing SMC footprint...</div>
-                </div>
-            </div>
+                </aside>
+            </main>
         </div>
 
-        <!-- EXNESS MODAL -->
-        <div id="exness-modal" class="modal-bg">
-            <div class="modal-card">
-                <h3 style="margin-top:0; color:#fff;">⚙️ Connect Exness MT5 Demo</h3>
-                <p style="font-size:12px; color:var(--muted); margin-bottom:16px;">Link your Exness demo account to route autonomous SMC trades.</p>
-                <div class="input-group">
-                    <label>Exness Login ID</label>
-                    <input type="text" id="ex-acc-id" placeholder="e.g. 142859102">
-                </div>
-                <div class="input-group">
-                    <label>Server</label>
-                    <select id="ex-server">
-                        <option value="Exness-MT5Trial">Exness-MT5Trial</option>
-                        <option value="Exness-MT5Trial2">Exness-MT5Trial2</option>
-                        <option value="Exness-MT5Trial9">Exness-MT5Trial9</option>
-                        <option value="Exness-MT4Trial">Exness-MT4Trial</option>
-                    </select>
-                </div>
-                <div class="input-group">
-                    <label>Demo Capital (USD)</label>
-                    <input type="number" id="ex-balance" value="50000">
-                </div>
-                <div style="display:flex; gap:10px; margin-top:18px;">
-                    <button class="btn-action" onclick="submitExness()" style="margin:0;">Connect</button>
-                    <button class="btn-action" onclick="closeExnessModal()" style="background:transparent; border:1px solid var(--border); color:#fff; margin:0;">Cancel</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- THREE.JS 3D VIRTUAL OFFICE SCRIPT -->
+        <!-- THREE.JS HIGH FIDELITY 3D OFFICE SCRIPT -->
         <script>
             let scene, camera, renderer, controls;
-            let wallDisplayCanvas, wallDisplayTexture;
-            let currentEquity = 50000.0, currentBTC = "$65,000.00";
+            let ledWallCanvas, ledWallTexture;
+            let liveBalance = 20.21, btcDisplay = "$65,000.00";
+            let agentObjects = [];
 
-            function init3DOffice() {
-                const container = document.getElementById('canvas-container');
-                const width = container.clientWidth;
-                const height = container.clientHeight;
+            function init3DWorld() {
+                const container = document.getElementById('viewport-3d');
+                const w = container.clientWidth;
+                const h = container.clientHeight;
 
-                // 1. Scene & Camera
                 scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x05070d);
-                scene.fog = new THREE.FogExp2(0x05070d, 0.018);
+                scene.background = new THREE.Color(0x060810);
+                scene.fog = new THREE.FogExp2(0x060810, 0.015);
 
-                camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-                camera.position.set(28, 22, 28);
+                camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+                camera.position.set(32, 26, 32);
 
-                // 2. Renderer
                 renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('webgl-canvas'), antialias: true });
-                renderer.setSize(width, height);
+                renderer.setSize(w, h);
                 renderer.setPixelRatio(window.devicePixelRatio);
                 renderer.shadowMap.enabled = true;
 
-                // 3. Controls
                 controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.05;
-                controls.maxPolarAngle = Math.PI / 2.1;
+                controls.maxPolarAngle = Math.PI / 2.05;
                 controls.target.set(0, 2, 0);
 
-                // 4. Lighting
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
-                scene.add(ambientLight);
+                // Lighting
+                const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+                scene.add(ambient);
 
-                const dirLight = new THREE.DirectionalLight(0x38bdf8, 1.2);
-                dirLight.position.set(20, 35, 15);
-                dirLight.castShadow = true;
-                scene.add(dirLight);
+                const sun = new THREE.DirectionalLight(0x38bdf8, 1.2);
+                sun.position.set(25, 40, 20);
+                sun.castShadow = true;
+                scene.add(sun);
 
-                // Neon accent point lights
-                const neonGreen = new THREE.PointLight(0x10b981, 2, 30);
-                neonGreen.position.set(-6, 8, -6);
-                scene.add(neonGreen);
+                // Floor with Perimeter Glowing Fence (from WhatsApp Video 2)
+                createFloorAndPerimeter();
 
-                const neonPurple = new THREE.PointLight(0xa855f7, 2, 30);
-                neonPurple.position.set(8, 8, 4);
-                scene.add(neonPurple);
+                // Huge Wall LED Screen (from Video 1 & 2)
+                createLEDWall();
 
-                // 5. Floor Grid
-                const floorGeo = new THREE.PlaneGeometry(50, 40);
-                const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0f1d, roughness: 0.7, metalness: 0.2 });
+                // Cubicles & Desks
+                createTradingCubicles(-8, -2);
+                createMediaStudio(8, 2);
+                createManagerOffice(-14, 10);
+                createCoffeeLounge(12, 10);
+                createServerFarm(-18, -10);
+
+                window.addEventListener('resize', onWindowResize);
+                animate();
+            }
+
+            // Floor & Glowing Golden Border Fence
+            function createFloorAndPerimeter() {
+                // Tiled floor
+                const floorGeo = new THREE.PlaneGeometry(54, 44);
+                const floorMat = new THREE.MeshStandardMaterial({ color: 0x090d18, roughness: 0.6, metalness: 0.3 });
                 const floor = new THREE.Mesh(floorGeo, floorMat);
                 floor.rotation.x = -Math.PI / 2;
                 floor.receiveShadow = true;
                 scene.add(floor);
 
-                const grid = new THREE.GridHelper(50, 50, 0x1e293b, 0x0f172a);
+                const grid = new THREE.GridHelper(54, 54, 0x1e293b, 0x0f172a);
                 grid.position.y = 0.02;
                 scene.add(grid);
 
-                // 6. Giant Wall Display (Back Wall)
-                createWallDisplay();
+                // Glowing Golden Glass Perimeter Railing (from Video 2)
+                const fenceMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.85 });
+                const railGeoX = new THREE.BoxGeometry(54, 0.1, 0.1);
+                const railGeoZ = new THREE.BoxGeometry(0.1, 0.1, 44);
 
-                // 7. Trading Desks Cluster (Left Side)
-                createDeskCluster(-7, -2, "TRADING FLOOR", 0x38bdf8);
-
-                // 8. Media & Branding Desks Cluster (Right Side)
-                createDeskCluster(7, 3, "BRANDING STUDIO", 0xa855f7);
-
-                // 9. Server Racks (Exness Bridge Gateway)
-                createServerRacks(-15, -12);
-
-                // Resize listener
-                window.addEventListener('resize', onWindowResize);
-                animate();
+                const r1 = new THREE.Mesh(railGeoX, fenceMat); r1.position.set(0, 1.2, 22); scene.add(r1);
+                const r2 = new THREE.Mesh(railGeoX, fenceMat); r2.position.set(0, 1.2, -22); scene.add(r2);
+                const r3 = new THREE.Mesh(railGeoZ, fenceMat); r3.position.set(-27, 1.2, 0); scene.add(r3);
+                const r4 = new THREE.Mesh(railGeoZ, fenceMat); r4.position.set(27, 1.2, 0); scene.add(r4);
             }
 
-            // Create Canvas-based Wall Display Texture
-            function createWallDisplay() {
-                wallDisplayCanvas = document.createElement('canvas');
-                wallDisplayCanvas.width = 1024;
-                wallDisplayCanvas.height = 512;
-                updateWallDisplayCanvas();
+            // Big Wall Display
+            function createLEDWall() {
+                ledWallCanvas = document.createElement('canvas');
+                ledWallCanvas.width = 1024;
+                ledWallCanvas.height = 512;
+                updateLEDWallCanvas();
 
-                wallDisplayTexture = new THREE.CanvasTexture(wallDisplayCanvas);
-                const screenGeo = new THREE.PlaneGeometry(24, 11);
-                const screenMat = new THREE.MeshBasicMaterial({ map: wallDisplayTexture });
-                const screen = new THREE.Mesh(screenGeo, screenMat);
-                screen.position.set(0, 9, -18);
-                scene.add(screen);
-
-                // Glowing border
-                const borderGeo = new THREE.BoxGeometry(24.4, 11.4, 0.4);
-                const borderMat = new THREE.MeshStandardMaterial({ color: 0x111827, emissive: 0x10b981, emissiveIntensity: 0.25 });
-                const borderMesh = new THREE.Mesh(borderGeo, borderMat);
-                borderMesh.position.set(0, 9, -18.3);
-                scene.add(borderMesh);
+                ledWallTexture = new THREE.CanvasTexture(ledWallCanvas);
+                const wallGeo = new THREE.PlaneGeometry(28, 12);
+                const wallMat = new THREE.MeshBasicMaterial({ map: ledWallTexture });
+                const wall = new THREE.Mesh(wallGeo, wallMat);
+                wall.position.set(0, 8.5, -21.8);
+                scene.add(wall);
             }
 
-            function updateWallDisplayCanvas() {
-                const ctx = wallDisplayCanvas.getContext('2d');
-                ctx.fillStyle = '#050811';
+            function updateLEDWallCanvas() {
+                const ctx = ledWallCanvas.getContext('2d');
+                ctx.fillStyle = '#03050a';
                 ctx.fillRect(0, 0, 1024, 512);
 
-                // Title & Tickers
                 ctx.fillStyle = '#38bdf8';
-                ctx.font = 'bold 36px "Plus Jakarta Sans"';
-                ctx.fillText('INSTITUTIONAL QUANT DESK · EXNESS MT5', 40, 60);
+                ctx.font = 'bold 34px "Plus Jakarta Sans"';
+                ctx.fillText('EXNESS MT5 · INSTITUTIONAL TRADING FLOOR', 40, 60);
 
                 ctx.fillStyle = '#94a3b8';
-                ctx.font = '22px "JetBrains Mono"';
-                ctx.fillText('REAL-TIME PORTFOLIO EQUITY CURVE', 40, 100);
+                ctx.font = '20px "JetBrains Mono"';
+                ctx.fillText('ACCOUNT #434353249 · Exness-MT5Trial7 (HEDGING)', 40, 95);
 
                 ctx.fillStyle = '#10b981';
-                ctx.font = 'bold 64px "JetBrains Mono"';
-                ctx.fillText(`$${currentEquity.toLocaleString('en-US', {minimumFractionDigits: 2})}`, 40, 175);
+                ctx.font = 'bold 68px "JetBrains Mono"';
+                ctx.fillText(`US$ ${liveBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}`, 40, 175);
+
+                // Setup badge tags (like Video 2)
+                ctx.fillStyle = '#f59e0b';
+                ctx.font = 'bold 22px "JetBrains Mono"';
+                ctx.fillText('SETUP 3.1: 0.618 OTE (+1,026)', 40, 220);
 
                 ctx.fillStyle = '#38bdf8';
-                ctx.font = '24px "JetBrains Mono"';
-                ctx.fillText(`BTC TICKER: ${currentBTC} (HTF: BULLISH)`, 40, 220);
+                ctx.fillText(`BTC TICKER: ${btcDisplay} · TREND: BULLISH`, 480, 220);
 
-                // Glowing Green Chart Line
+                // Green Equity Chart Line
                 ctx.strokeStyle = '#10b981';
                 ctx.lineWidth = 6;
                 ctx.beginPath();
                 ctx.moveTo(40, 440);
-                ctx.lineTo(200, 420);
-                ctx.lineTo(360, 450);
-                ctx.lineTo(520, 360);
-                ctx.lineTo(680, 380);
-                ctx.lineTo(840, 290);
-                ctx.lineTo(980, 270);
+                ctx.lineTo(180, 410);
+                ctx.lineTo(340, 430);
+                ctx.lineTo(500, 340);
+                ctx.lineTo(660, 360);
+                ctx.lineTo(820, 260);
+                ctx.lineTo(980, 240);
                 ctx.stroke();
 
-                ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
                 ctx.lineTo(980, 480);
                 ctx.lineTo(40, 480);
                 ctx.closePath();
                 ctx.fill();
 
-                if (wallDisplayTexture) wallDisplayTexture.needsUpdate = true;
+                if (ledWallTexture) ledWallTexture.needsUpdate = true;
             }
 
-            // Create Desk Pods with Multi-monitors and Agents
-            function createDeskCluster(x, z, label, accentColor) {
+            // Trading Cubicles (Left Wing)
+            function createTradingCubicles(x, z) {
                 const group = new THREE.Group();
                 group.position.set(x, 0, z);
 
-                // Desk Surface
-                const deskGeo = new THREE.BoxGeometry(9, 1.4, 4);
-                const deskMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.4 });
-                const desk = new THREE.Mesh(deskGeo, deskMat);
-                desk.position.y = 1.4;
-                desk.castShadow = true;
+                // Double pod desks
+                for (let row = 0; row < 2; row++) {
+                    const desk = new THREE.Mesh(
+                        new THREE.BoxGeometry(10, 1.4, 3.4),
+                        new THREE.MeshStandardMaterial({ color: 0x111726, roughness: 0.4 })
+                    );
+                    desk.position.set(0, 1.4, row * 5);
+                    group.add(desk);
+
+                    // Monitors on desk
+                    for (let m = -1; m <= 1; m++) {
+                        const screen = new THREE.Mesh(
+                            new THREE.BoxGeometry(2.2, 1.3, 0.1),
+                            new THREE.MeshBasicMaterial({ color: 0x0284c7 })
+                        );
+                        screen.position.set(m * 2.8, 2.8, (row * 5) - 0.6);
+                        group.add(screen);
+
+                        // Office Chair
+                        const chair = new THREE.Mesh(
+                            new THREE.CylinderGeometry(0.5, 0.5, 1.2),
+                            new THREE.MeshStandardMaterial({ color: 0x1e293b })
+                        );
+                        chair.position.set(m * 2.8, 0.7, (row * 5) + 1.2);
+                        group.add(chair);
+
+                        // 3D Robot Agent (Trading Agents)
+                        const name = row === 0 ? (m === -1 ? "Alex" : (m === 0 ? "David" : "Marcus")) : "Leo";
+                        createAgentAvatar(group, m * 2.8, 0.8, (row * 5) + 1.2, 0x38bdf8, name);
+                    }
+                }
+                scene.add(group);
+            }
+
+            // Media Studio (Right Wing)
+            function createMediaStudio(x, z) {
+                const group = new THREE.Group();
+                group.position.set(x, 0, z);
+
+                // Studio desk
+                const desk = new THREE.Mesh(
+                    new THREE.BoxGeometry(9, 1.4, 3.4),
+                    new THREE.MeshStandardMaterial({ color: 0x1a1226, roughness: 0.4 })
+                );
+                desk.position.set(0, 1.4, 0);
                 group.add(desk);
 
-                // Desk Accent Strip
-                const stripGeo = new THREE.BoxGeometry(9.1, 0.1, 0.1);
-                const stripMat = new THREE.MeshBasicMaterial({ color: accentColor });
-                const strip = new THREE.Mesh(stripGeo, stripMat);
-                strip.position.set(0, 2.1, 2);
-                group.add(strip);
+                // Neon Purple Monitors
+                for (let m = -1; m <= 1; m++) {
+                    const screen = new THREE.Mesh(
+                        new THREE.BoxGeometry(2.2, 1.3, 0.1),
+                        new THREE.MeshBasicMaterial({ color: 0xa855f7 })
+                    );
+                    screen.position.set(m * 2.6, 2.8, -0.6);
+                    group.add(screen);
 
-                // 3 Monitors
-                for (let i = -1; i <= 1; i++) {
-                    const monGeo = new THREE.BoxGeometry(2.2, 1.4, 0.1);
-                    const monMat = new THREE.MeshBasicMaterial({ color: 0x0284c7 });
-                    const mon = new THREE.Mesh(monGeo, monMat);
-                    mon.position.set(i * 2.6, 2.9, -0.6);
-                    group.add(mon);
-
-                    // Monitor Stand
-                    const standGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.8);
-                    const standMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
-                    const stand = new THREE.Mesh(standGeo, standMat);
-                    stand.position.set(i * 2.6, 2.4, -0.6);
-                    group.add(stand);
-
-                    // Stylized Robot Agent Seated
-                    createRobotAgent(group, i * 2.6, 0.7, 1.4, accentColor);
+                    const name = m === -1 ? "Sophia" : (m === 0 ? "Mia" : "Noah");
+                    createAgentAvatar(group, m * 2.6, 0.8, 1.2, 0xa855f7, name);
                 }
+
+                // Whiteboard / Glass Board
+                const board = new THREE.Mesh(
+                    new THREE.BoxGeometry(6, 4, 0.1),
+                    new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.2 })
+                );
+                board.position.set(0, 3.5, 4);
+                group.add(board);
 
                 scene.add(group);
             }
 
-            // Stylized 3D Robot Agent
-            function createRobotAgent(parent, x, y, z, colorHex) {
+            // Manager Office with Golden Trophy (from Video 1 Frame 7)
+            function createManagerOffice(x, z) {
+                const group = new THREE.Group();
+                group.position.set(x, 0, z);
+
+                // Mahogany Executive Desk
+                const desk = new THREE.Mesh(
+                    new THREE.BoxGeometry(6, 1.5, 3.2),
+                    new THREE.MeshStandardMaterial({ color: 0x3b1c11, roughness: 0.5 })
+                );
+                desk.position.y = 1.4;
+                group.add(desk);
+
+                // Golden Trophy on desk (exact from video!)
+                const trophyCup = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.35, 0.15, 0.7),
+                    new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.8, roughness: 0.2 })
+                );
+                trophyCup.position.set(-1.6, 2.5, 0.4);
+                group.add(trophyCup);
+
+                // Executive Bookshelf behind desk
+                const shelf = new THREE.Mesh(
+                    new THREE.BoxGeometry(7, 6, 1),
+                    new THREE.MeshStandardMaterial({ color: 0x1f2937 })
+                );
+                shelf.position.set(0, 3.5, -3);
+                group.add(shelf);
+
+                scene.add(group);
+            }
+
+            // Coffee Bar & Lounge (from Video 1)
+            function createCoffeeLounge(x, z) {
+                const group = new THREE.Group();
+                group.position.set(x, 0, z);
+
+                // Coffee Counter
+                const counter = new THREE.Mesh(
+                    new THREE.BoxGeometry(7, 1.6, 2.2),
+                    new THREE.MeshStandardMaterial({ color: 0x18181b })
+                );
+                counter.position.y = 1.4;
+                group.add(counter);
+
+                // Coffee Machine on counter
+                const machine = new THREE.Mesh(
+                    new THREE.BoxGeometry(1.2, 1.1, 0.9),
+                    new THREE.MeshStandardMaterial({ color: 0xef4444 })
+                );
+                machine.position.set(-1.8, 2.7, 0);
+                group.add(machine);
+
+                // Lounge Couch
+                const couch = new THREE.Mesh(
+                    new THREE.BoxGeometry(6, 1.2, 2.2),
+                    new THREE.MeshStandardMaterial({ color: 0x1e3a5f })
+                );
+                couch.position.set(0, 0.8, 4);
+                group.add(couch);
+
+                scene.add(group);
+            }
+
+            // Server Farm Racks
+            function createServerFarm(x, z) {
+                for (let i = 0; i < 3; i++) {
+                    const rack = new THREE.Mesh(
+                        new THREE.BoxGeometry(2.4, 7.5, 2.2),
+                        new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.8 })
+                    );
+                    rack.position.set(x + (i * 3), 3.75, z);
+                    scene.add(rack);
+
+                    // Blinking LED Strip
+                    const led = new THREE.Mesh(
+                        new THREE.BoxGeometry(1.8, 0.08, 0.05),
+                        new THREE.MeshBasicMaterial({ color: i === 1 ? 0x10b981 : 0x38bdf8 })
+                    );
+                    led.position.set(x + (i * 3), 5.5, z + 1.12);
+                    scene.add(led);
+                }
+            }
+
+            // 3D Agent Model with Floating Name Badge
+            function createAgentAvatar(parent, x, y, z, colorHex, name) {
                 const agent = new THREE.Group();
                 agent.position.set(x, y, z);
 
                 // Body
-                const bodyGeo = new THREE.BoxGeometry(0.9, 1.1, 0.7);
-                const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
-                const body = new THREE.Mesh(bodyGeo, bodyMat);
-                body.position.y = 1.2;
+                const body = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.85, 1.1, 0.65),
+                    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 })
+                );
+                body.position.y = 1.1;
                 agent.add(body);
 
-                // Head with glowing visor
-                const headGeo = new THREE.BoxGeometry(0.7, 0.6, 0.6);
-                const headMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
-                const head = new THREE.Mesh(headGeo, headMat);
-                head.position.y = 2.1;
+                // Head
+                const head = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.65, 0.6, 0.6),
+                    new THREE.MeshStandardMaterial({ color: 0x0f172a })
+                );
+                head.position.y = 2.0;
                 agent.add(head);
 
-                const visorGeo = new THREE.BoxGeometry(0.55, 0.18, 0.05);
-                const visorMat = new THREE.MeshBasicMaterial({ color: colorHex });
-                const visor = new THREE.Mesh(visorGeo, visorMat);
-                visor.position.set(0, 2.1, 0.31);
+                // Glowing Visor
+                const visor = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.5, 0.16, 0.05),
+                    new THREE.MeshBasicMaterial({ color: colorHex })
+                );
+                visor.position.set(0, 2.0, 0.31);
                 agent.add(visor);
 
                 parent.add(agent);
             }
 
-            // Server Racks (Gateway)
-            function createServerRacks(x, z) {
-                const rackGeo = new THREE.BoxGeometry(2.4, 7, 2);
-                const rackMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.8 });
-                for (let i = 0; i < 3; i++) {
-                    const rack = new THREE.Mesh(rackGeo, rackMat);
-                    rack.position.set(x + (i * 3.2), 3.5, z);
-                    scene.add(rack);
-
-                    // Blinking LED Strip
-                    const ledGeo = new THREE.BoxGeometry(1.8, 0.08, 0.05);
-                    const ledMat = new THREE.MeshBasicMaterial({ color: i === 1 ? 0x10b981 : 0x38bdf8 });
-                    const led = new THREE.Mesh(ledGeo, ledMat);
-                    led.position.set(x + (i * 3.2), 5, z + 1.02);
-                    scene.add(led);
-                }
-            }
-
+            // Camera Presets
             function setCameraView(view) {
-                document.querySelectorAll('.cam-btn').forEach(b => b.classList.remove('active'));
-                event.target.classList.add('active');
-
-                if (view === 'iso') {
-                    gsapAnimateCam(28, 22, 28, 0, 2, 0);
+                document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
+                
+                if (view === 'overview') {
+                    camera.position.set(32, 26, 32);
+                    controls.target.set(0, 2, 0);
+                } else if (view === 'walkin') {
+                    camera.position.set(0, 3.5, 16);
+                    controls.target.set(0, 3, -10);
                 } else if (view === 'trading') {
-                    gsapAnimateCam(-6, 9, 8, -7, 2, -2);
+                    camera.position.set(-8, 9, 7);
+                    controls.target.set(-8, 2, -2);
                 } else if (view === 'branding') {
-                    gsapAnimateCam(9, 9, 14, 7, 2, 3);
+                    camera.position.set(8, 9, 10);
+                    controls.target.set(8, 2, 2);
+                } else if (view === 'manager') {
+                    camera.position.set(-14, 8, 17);
+                    controls.target.set(-14, 2, 10);
+                } else if (view === 'coffee') {
+                    camera.position.set(12, 8, 16);
+                    controls.target.set(12, 2, 10);
                 } else if (view === 'wall') {
-                    gsapAnimateCam(0, 10, 12, 0, 9, -18);
+                    camera.position.set(0, 10, 8);
+                    controls.target.set(0, 8.5, -21.8);
                 }
-            }
-
-            function gsapAnimateCam(x, y, z, tx, ty, tz) {
-                camera.position.set(x, y, z);
-                controls.target.set(tx, ty, tz);
             }
 
             function onWindowResize() {
-                const container = document.getElementById('canvas-container');
+                const container = document.getElementById('viewport-3d');
                 camera.aspect = container.clientWidth / container.clientHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(container.clientWidth, container.clientHeight);
@@ -582,22 +763,26 @@ def virtual_office_app():
                 renderer.render(scene, camera);
             }
 
-            // API & SYNC LOGIC
-            function openExnessModal() { document.getElementById('exness-modal').style.display = 'flex'; }
-            function closeExnessModal() { document.getElementById('exness-modal').style.display = 'none'; }
-
-            async function submitExness() {
-                const accId = document.getElementById('ex-acc-id').value;
-                const server = document.getElementById('ex-server').value;
-                const bal = parseFloat(document.getElementById('ex-balance').value) || 50000;
-                if (!accId) { alert('Enter Exness Login ID'); return; }
-
-                await fetch('/api/exness/connect', {
+            // TASK & SYNC ENGINE
+            async function submitCustomTask() {
+                const input = document.getElementById('custom-task-input');
+                const text = input.value.trim();
+                if (!text) return;
+                input.value = '';
+                await fetch('/api/task', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ account_id: accId, server: server, balance: bal })
+                    body: JSON.stringify({ task: text })
                 });
-                closeExnessModal();
+                syncTelemetry();
+            }
+
+            async function dispatchPresetTask(directive) {
+                await fetch('/api/task', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ task: directive })
+                });
                 syncTelemetry();
             }
 
@@ -606,70 +791,57 @@ def virtual_office_app():
                     const res = await fetch('/api/telemetry');
                     const d = await res.json();
 
-                    // Update Balance
-                    currentEquity = d.account.equity;
-                    document.getElementById('acc-balance').innerText = '$' + d.account.equity.toLocaleString('en-US', {minimumFractionDigits: 2});
-                    
-                    // Exness
-                    if (d.exness && d.exness.connected) {
-                        document.getElementById('exness-tag').innerText = `Exness: #${d.exness.account_id} (${d.exness.server})`;
-                        document.getElementById('exness-tag').className = 'badge badge-green';
+                    // Update Exness Balance & LED Wall
+                    if (d.exness) {
+                        liveBalance = d.exness.balance;
+                        document.getElementById('exness-bal-display').innerText = `$${liveBalance.toLocaleString('en-US', {minimumFractionDigits: 2})} USD`;
+                        document.getElementById('exness-quick-badge').innerText = `Exness MT5: #${d.exness.account_id} (${d.exness.server})`;
                     }
 
                     // Market
-                    const m = d.market_analysis;
-                    if (m && m.current_price) {
-                        currentBTC = `$${m.current_price.toLocaleString()}`;
-                        document.getElementById('btc-price').innerText = currentBTC;
-                        document.getElementById('btc-chg').innerText = `${m.change_pct >= 0 ? '+' : ''}${m.change_pct.toFixed(2)}%`;
-                        document.getElementById('btc-chg').style.color = m.change_pct >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
-                        document.getElementById('htf-trend').innerText = m.trend;
-                        document.getElementById('htf-trend').style.color = m.trend === 'BULLISH' ? 'var(--accent-green)' : 'var(--accent-red)';
-                        document.getElementById('eq-zone').innerText = m.zone_status.includes('DISCOUNT') ? 'DISCOUNT (BUY)' : 'PREMIUM (SELL)';
+                    if (d.market_analysis && d.market_analysis.current_price) {
+                        btcDisplay = `$${d.market_analysis.current_price.toLocaleString()}`;
+                        document.getElementById('hud-btc').innerText = btcDisplay;
+                        document.getElementById('hud-trend').innerText = d.market_analysis.trend;
+                        document.getElementById('hud-trend').style.color = d.market_analysis.trend === 'BULLISH' ? 'var(--accent-green)' : 'var(--accent-red)';
+                        document.getElementById('hud-zone').innerText = d.market_analysis.zone_status;
                     }
 
-                    // Update 3D LED Wall
-                    updateWallDisplayCanvas();
+                    // Update Canvas on 3D LED Screen
+                    updateLEDWallCanvas();
 
-                    // Workforce Roster
+                    // Agent Roster
                     if (d.agents) {
-                        document.getElementById('agent-roster').innerHTML = d.agents.map(a => `
-                            <div class="agent-row">
+                        document.getElementById('agent-roster-container').innerHTML = d.agents.map(a => `
+                            <div class="agent-item">
                                 <div>
-                                    <span class="agent-dot" style="background: ${a.color}"></span>
-                                    <strong>${a.name}</strong> <small style="color:var(--muted)">(${a.role.split(' ')[0]})</small>
+                                    <strong style="color: ${a.color}">${a.name}</strong>
+                                    <small style="color: var(--text-muted); display:block;">${a.role}</small>
                                 </div>
-                                <span style="font-size:10px; color:${a.color}; font-weight:700;">${a.status}</span>
+                                <span class="agent-status-tag" style="background: rgba(255,255,255,0.06); color: ${a.color};">${a.status}</span>
                             </div>
                         `).join('');
                     }
 
                     // Inter-Com Chat Stream
-                    if (d.agent_messages && d.agent_messages.length > 0) {
-                        document.getElementById('chat-stream').innerHTML = d.agent_messages.map(msg => `
-                            <div class="chat-msg">
+                    if (d.agent_messages) {
+                        document.getElementById('chat-stream-container').innerHTML = d.agent_messages.map(m => `
+                            <div class="chat-bubble">
                                 <div class="chat-meta">
-                                    <span class="chat-author">${msg.agent} (${msg.role})</span>
-                                    <span>${msg.time}</span>
+                                    <span class="chat-author">${m.agent} (${m.role})</span>
+                                    <span>${m.time}</span>
                                 </div>
-                                <div class="chat-text">${msg.text}</div>
+                                <div>${m.text}</div>
                             </div>
                         `).join('');
                     }
-
-                    // Latest Branding Post
-                    if (d.branding_posts && d.branding_posts.length > 0) {
-                        const lp = d.branding_posts[0];
-                        document.getElementById('latest-brand-text').innerText = lp.headline;
-                    }
-
                 } catch(e) {}
             }
 
             window.onload = () => {
-                init3DOffice();
+                init3DWorld();
                 syncTelemetry();
-                setInterval(syncTelemetry, 3500);
+                setInterval(syncTelemetry, 3000);
             };
         </script>
     </body>
