@@ -6,7 +6,7 @@ from typing import Optional
 
 from app.core.orchestrator import MasterOrchestrator
 
-app = FastAPI(title="Institutional SMC Quant Desk, Exness Bridge & AI Agency Engine")
+app = FastAPI(title="3D Virtual AI Trading Floor & Media Office")
 orchestrator = MasterOrchestrator()
 
 @app.on_event("startup")
@@ -18,11 +18,12 @@ def get_telemetry():
     return JSONResponse({
         "account": orchestrator.account.get_summary(),
         "exness": orchestrator.exness.get_status(),
+        "agents": orchestrator.agents,
+        "agent_messages": orchestrator.agent_messages,
         "open_trades": orchestrator.account.open_trades,
         "trade_history": orchestrator.account.trade_history[-10:],
         "market_analysis": orchestrator.last_analysis,
-        "social_posts": orchestrator.social.get_recent_posts(),
-        "leads": orchestrator.leads.get_leads(),
+        "branding_posts": orchestrator.branding.get_feed(),
         "logs": orchestrator.system_logs
     })
 
@@ -40,454 +41,264 @@ def connect_exness(data: ExnessConnectInput):
     )
     orchestrator.account.balance = data.balance
     orchestrator.account.equity = data.balance
-    orchestrator.log(f"🔗 EXNESS DEMO CONNECTED: Account #{data.account_id} on {data.server} | Balance: ${data.balance:,.2f}")
+    orchestrator.send_agent_message("Leo", "Execution Trader", f"Exness Demo Linked! Account #{data.account_id} on {data.server} ($ {data.balance:,.2f})")
     return {"status": "success", "exness": res}
 
-class LeadInput(BaseModel):
-    name: str
-    email: str
-    company: Optional[str] = "Independent"
-    budget: Optional[str] = "$2,500 - $5,000"
-    service: Optional[str] = "Full AI Workflow & Social Media Automation"
-
-@app.post("/api/lead")
-def submit_lead(lead: LeadInput):
-    record = orchestrator.leads.process_lead(
-        name=lead.name,
-        email=lead.email,
-        company=lead.company,
-        budget=lead.budget,
-        service=lead.service
-    )
-    orchestrator.log(f"🎯 INBOUND LEAD: {record['name']} ({record['company']}) - Tier: {record['tier']}")
-    return {"status": "success", "lead": record}
-
 @app.get("/", response_class=HTMLResponse)
-def control_center():
+def virtual_office_app():
     return """
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Institutional SMC Quant Desk & AI Agency</title>
+        <title>3D Virtual AI Trading Floor & Media Office</title>
         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <!-- Three.js & OrbitControls for 3D Virtual Office -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
         <style>
             :root {
-                --bg: #06080e;
-                --surface: #0e1320;
-                --surface-hover: #151c2e;
-                --border: #1a2338;
+                --bg: #05070d;
+                --panel: rgba(13, 18, 30, 0.92);
+                --border: #1a2438;
                 --accent-blue: #38bdf8;
                 --accent-green: #10b981;
-                --accent-red: #f43f5e;
                 --accent-gold: #f59e0b;
                 --accent-purple: #a855f7;
-                --text: #f8fafc;
-                --muted: #94a3b8;
+                --accent-red: #f43f5e;
+                --text: #f1f5f9;
+                --muted: #8494ab;
             }
             * { box-sizing: border-box; }
-            body {
-                margin: 0;
-                padding: 24px;
-                background-color: var(--bg);
-                color: var(--text);
+            body, html {
+                margin: 0; padding: 0; width: 100%; height: 100%;
+                overflow: hidden; background: var(--bg); color: var(--text);
                 font-family: 'Plus Jakarta Sans', sans-serif;
-                -webkit-font-smoothing: antialiased;
             }
-            .container { max-width: 1400px; margin: auto; }
-            
-            /* Header */
-            .header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                background: linear-gradient(135deg, rgba(14, 19, 32, 0.95), rgba(21, 28, 46, 0.8));
+
+            /* Main Layout Grid */
+            #app-layout {
+                display: grid;
+                grid-template-columns: 320px 1fr 340px;
+                width: 100vw; height: 100vh;
+                position: relative;
+            }
+
+            /* Left & Right Sidebars */
+            .sidebar {
+                background: var(--panel);
+                backdrop-filter: blur(16px);
+                border-right: 1px solid var(--border);
+                display: flex; flex-direction: column;
+                z-index: 10; padding: 18px;
+                overflow-y: auto; height: 100vh;
+            }
+            .sidebar-right {
+                border-right: none;
+                border-left: 1px solid var(--border);
+            }
+
+            /* 3D Viewport */
+            #canvas-container {
+                position: relative;
+                width: 100%; height: 100%;
+                overflow: hidden;
+            }
+            #webgl-canvas { width: 100%; height: 100%; display: block; }
+
+            /* HUD Floating Over 3D Canvas */
+            .hud-overlay {
+                position: absolute; top: 16px; left: 16px; right: 16px;
+                display: flex; justify-content: space-between; align-items: center;
+                pointer-events: none; z-index: 20;
+            }
+            .hud-card {
+                background: rgba(10, 15, 26, 0.85);
                 backdrop-filter: blur(12px);
-                padding: 22px 28px;
-                border-radius: 16px;
                 border: 1px solid var(--border);
-                margin-bottom: 24px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+                border-radius: 12px; padding: 10px 18px;
+                pointer-events: auto; display: flex; align-items: center; gap: 14px;
             }
-            .title-area h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px; }
-            .title-area p { margin: 6px 0 0 0; color: var(--muted); font-size: 13.5px; }
+            .cam-controls {
+                position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+                display: flex; gap: 8px; z-index: 20; background: rgba(10,15,26,0.88);
+                padding: 6px; border-radius: 30px; border: 1px solid var(--border);
+            }
+            .cam-btn {
+                background: transparent; border: none; color: var(--muted);
+                padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700;
+                cursor: pointer; transition: all 0.2s;
+            }
+            .cam-btn.active, .cam-btn:hover { background: var(--accent-blue); color: #000; }
+
+            /* Typography & Cards */
+            .brand-header h2 { margin: 0; font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+            .brand-header p { margin: 4px 0 16px 0; font-size: 12px; color: var(--muted); }
+            .section-label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin: 16px 0 8px 0; }
             
-            .header-badges { display: flex; align-items: center; gap: 12px; }
+            .stat-box {
+                background: #080c14; border: 1px solid var(--border); border-radius: 10px;
+                padding: 12px 14px; margin-bottom: 10px;
+            }
+            .stat-title { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+            .stat-val { font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono', monospace; margin: 4px 0; }
+
             .badge {
-                padding: 7px 15px; border-radius: 30px; font-size: 12.5px; font-weight: 700;
-                display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s;
+                padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+                display: inline-flex; align-items: center; gap: 6px;
             }
-            .badge-live { background: rgba(16, 185, 129, 0.12); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.4); }
-            .badge-exness { background: rgba(245, 158, 11, 0.12); color: var(--accent-gold); border: 1px solid rgba(245, 158, 11, 0.4); }
-            .badge-exness:hover { background: rgba(245, 158, 11, 0.25); transform: translateY(-1px); }
-            .pulse { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; animation: pulse 1.6s infinite; }
-            @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+            .badge-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+            .badge-gold { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
 
-            /* Navigation Tabs */
-            .nav-tabs {
-                display: flex;
-                gap: 10px;
-                margin-bottom: 24px;
-                border-bottom: 1px solid var(--border);
-                padding-bottom: 8px;
+            /* Agent Roster List */
+            .agent-row {
+                display: flex; align-items: center; justify-content: space-between;
+                background: #080c14; border: 1px solid var(--border); border-radius: 8px;
+                padding: 10px; margin-bottom: 8px; font-size: 12px;
             }
-            .tab-btn {
-                background: transparent;
-                border: none;
-                color: var(--muted);
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: 700;
-                border-radius: 10px;
-                cursor: pointer;
-                transition: all 0.2s;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            .tab-btn.active {
-                background: var(--surface);
-                color: var(--accent-blue);
-                border: 1px solid var(--border);
-            }
-            .tab-btn:hover:not(.active) { color: #fff; background: rgba(255,255,255,0.03); }
+            .agent-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 
-            /* Cards & Grid */
-            .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
-            .grid-2 { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 20px; margin-bottom: 24px; }
-            .card {
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 14px;
-                padding: 22px;
-                box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            /* Agent Chat Stream (Right Sidebar) */
+            .chat-stream {
+                flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+                padding-right: 4px; font-size: 12.5px;
             }
-            .card-label { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
-            .card-value { font-size: 26px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
-            .card-sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
-
-            /* Tags */
-            .tag { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
-            .tag-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
-            .tag-red { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
-            .tag-gold { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
-            .tag-blue { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
-
-            /* Table */
-            table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
-            th { text-align: left; padding: 12px 14px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
-            td { padding: 12px 14px; border-bottom: 1px solid #141b29; font-family: 'JetBrains Mono', monospace; }
-
-            /* Terminal & Visual Explainer */
-            .terminal {
-                background: #04060a;
-                border: 1px solid var(--border);
-                border-radius: 12px;
-                padding: 18px;
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 12.5px;
-                height: 240px;
-                overflow-y: auto;
-                color: #38bdf8;
-                line-height: 1.6;
+            .chat-msg {
+                background: #080c14; border: 1px solid var(--border); border-radius: 10px;
+                padding: 10px 12px; line-height: 1.45; animation: fadeIn 0.3s ease;
             }
-            .step-box {
-                background: #090e18;
-                border: 1px solid var(--border);
-                border-radius: 12px;
-                padding: 16px;
-                margin-bottom: 14px;
-                display: flex;
-                gap: 14px;
-                align-items: flex-start;
-            }
-            .step-num {
-                background: var(--accent-blue);
-                color: #000;
-                font-weight: 800;
-                width: 28px;
-                height: 28px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-shrink: 0;
-                font-size: 13px;
-            }
+            .chat-meta { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); margin-bottom: 4px; }
+            .chat-author { font-weight: 700; color: var(--accent-blue); }
+            .chat-text { color: #cbd5e1; }
+            @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-            /* Modal */
+            /* Buttons & Modal */
+            .btn-action {
+                width: 100%; padding: 10px; border-radius: 8px; border: none;
+                background: var(--accent-blue); color: #000; font-weight: 700; font-size: 12.5px;
+                cursor: pointer; transition: opacity 0.2s; margin-top: 6px;
+            }
+            .btn-action:hover { opacity: 0.9; }
+
             .modal-bg {
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
                 display: none; align-items: center; justify-content: center; z-index: 1000;
             }
-            .modal-box {
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 16px;
-                padding: 28px;
-                width: 90%; max-width: 480px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            .modal-card {
+                background: #0e1320; border: 1px solid var(--border); border-radius: 14px;
+                padding: 24px; width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
             }
-            .input-group { margin-bottom: 16px; }
-            .input-group label { display: block; font-size: 12.5px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+            .input-group { margin-bottom: 14px; }
+            .input-group label { display: block; font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 5px; }
             .input-group input, .input-group select {
-                width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border);
-                background: #070a12; color: #fff; font-family: inherit; font-size: 14px;
+                width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border);
+                background: #070a12; color: #fff; font-family: inherit; font-size: 13px;
             }
-            .btn-primary {
-                width: 100%; padding: 12px; border-radius: 8px; border: none;
-                background: var(--accent-blue); color: #000; font-weight: 700; font-size: 14px;
-                cursor: pointer; transition: opacity 0.2s;
-            }
-            .btn-primary:hover { opacity: 0.9; }
 
-            @media (max-width: 950px) { .grid-2 { grid-template-columns: 1fr; } .header { flex-direction: column; align-items: flex-start; gap: 16px; } }
+            @media (max-width: 1024px) {
+                #app-layout { grid-template-columns: 280px 1fr 280px; }
+            }
         </style>
     </head>
     <body>
-        <div class="container">
-            <!-- Header -->
-            <div class="header">
-                <div class="title-area">
-                    <h1>🚀 Institutional SMC Desk & AI Agency</h1>
-                    <p>High Timeframe (HTF) Trend Execution · Fibonacci OTE (0.618 - 0.786) · $50k Exness Paper Bridge</p>
+        <div id="app-layout">
+            <!-- LEFT SIDEBAR: INSTITUTIONAL CONTROL -->
+            <div class="sidebar">
+                <div class="brand-header">
+                    <h2>🏛️ AI Trading Floor</h2>
+                    <p>Proprietary SMC Desk & Media Studio</p>
                 </div>
-                <div class="header-badges">
-                    <div class="badge badge-exness" onclick="openExnessModal()">
-                        <div class="pulse"></div>
-                        <span id="badge-exness-text">⚙️ Connect Exness Demo</span>
+
+                <div class="stat-box">
+                    <div class="stat-title">Exness Demo Balance</div>
+                    <div id="acc-balance" class="stat-val">$50,000.00</div>
+                    <div id="exness-tag" class="badge badge-gold">Exness: Standby</div>
+                </div>
+
+                <button class="btn-action" onclick="openExnessModal()">⚙️ Link Exness MT5 Demo</button>
+
+                <div class="section-label">Active Market Pulse</div>
+                <div class="stat-box" style="margin-bottom: 6px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span class="stat-title">BTC/USDT</span>
+                        <span id="btc-chg" style="color: var(--accent-green); font-size: 11px; font-weight: 700;">+0.00%</span>
                     </div>
-                    <div class="badge badge-live">
-                        <div class="pulse"></div>
-                        <span>24/7 ONLINE</span>
+                    <div id="btc-price" class="stat-val" style="font-size: 18px;">$65,000.00</div>
+                    <div style="font-size: 11.5px; color: var(--muted); margin-top: 4px;">
+                        Trend: <strong id="htf-trend" style="color: var(--accent-green);">BULLISH</strong> | 
+                        Zone: <strong id="eq-zone" style="color: var(--accent-gold);">DISCOUNT</strong>
                     </div>
+                </div>
+
+                <div class="section-label">Workforce Status (7/7 Online)</div>
+                <div id="agent-roster"></div>
+            </div>
+
+            <!-- CENTER: 3D VIRTUAL OFFICE FLOOR -->
+            <div id="canvas-container">
+                <div class="hud-overlay">
+                    <div class="hud-card">
+                        <span style="font-size: 12px; font-weight: 700; color: var(--muted);">FLOOR STATUS:</span>
+                        <span class="badge badge-green">● 7 AGENTS ACTIVE</span>
+                    </div>
+                    <div class="hud-card">
+                        <span style="font-size: 12px; font-weight: 700; color: var(--muted);">SMC SETUP:</span>
+                        <span id="hud-setup-badge" style="font-size: 12px; font-weight: 700; color: var(--accent-blue);">0.618 Golden Pocket Active</span>
+                    </div>
+                </div>
+
+                <!-- 3D Canvas -->
+                <canvas id="webgl-canvas"></canvas>
+
+                <!-- Camera Switcher -->
+                <div class="cam-controls">
+                    <button class="cam-btn active" onclick="setCameraView('iso')">Isometric Floor</button>
+                    <button class="cam-btn" onclick="setCameraView('trading')">Trading Desk</button>
+                    <button class="cam-btn" onclick="setCameraView('branding')">Media Studio</button>
+                    <button class="cam-btn" onclick="setCameraView('wall')">LED Wall</button>
                 </div>
             </div>
 
-            <!-- Navigation Tabs -->
-            <div class="nav-tabs">
-                <button class="tab-btn active" onclick="switchTab('trading')">📊 Trading Desk</button>
-                <button class="tab-btn" onclick="switchTab('agency')">🏢 AI Agency Hub</button>
-                <button class="tab-btn" onclick="switchTab('explainer')">💡 How The System Works</button>
-            </div>
+            <!-- RIGHT SIDEBAR: REAL-TIME AGENT COMMUNICATION (INTER-COM) -->
+            <div class="sidebar sidebar-right">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="section-label" style="margin: 0;">Agent Inter-Com</div>
+                    <span class="badge badge-green" style="font-size: 10px;">LIVE CHAT</span>
+                </div>
+                <div style="font-size: 11.5px; color: var(--muted); margin-bottom: 12px;">
+                    Autonomous coordination between Quant Desk & Media Division.
+                </div>
 
-            <!-- TAB 1: TRADING DESK -->
-            <div id="tab-trading">
-                <!-- Top Metrics -->
-                <div class="grid-4">
-                    <div class="card">
-                        <div class="card-label">Exness Demo Balance</div>
-                        <div id="acc-balance" class="card-value">$50,000.00</div>
-                        <div id="exness-server-sub" class="card-sub">Server: Exness-MT5Trial</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">Total Portfolio Equity</div>
-                        <div id="acc-equity" class="card-value" style="color: var(--accent-green);">$50,000.00</div>
-                        <div id="acc-pnl" class="card-sub" style="color: var(--accent-green);">+$0.00 (+0.00%)</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">Win-Rate & Execution</div>
-                        <div id="acc-winrate" class="card-value">100.0%</div>
-                        <div id="acc-trades" class="card-sub">0 Closed Trades | 0 Active</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">Bitcoin Market Price</div>
-                        <div id="btc-price" class="card-value">$65,000.00</div>
-                        <div id="btc-change" class="card-sub">+0.00% 24h</div>
+                <!-- Live Chat Feed -->
+                <div class="chat-stream" id="chat-stream">
+                    <div class="chat-msg">
+                        <div class="chat-meta"><span class="chat-author">System</span><span>00:00</span></div>
+                        <div class="chat-text">Connecting to 3D Virtual Trading Floor inter-com stream...</div>
                     </div>
                 </div>
 
-                <!-- SMC Engine & Active Orders -->
-                <div class="grid-2">
-                    <div class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <span class="card-label" style="margin: 0;">Smart Money Concepts & Fibonacci Framework</span>
-                            <span id="market-sync" style="font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono';">Syncing...</span>
-                        </div>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
-                            <div style="background: #080c14; padding: 14px; border-radius: 10px; border: 1px solid var(--border);">
-                                <div style="font-size: 11px; color: var(--muted); margin-bottom: 4px;">HTF MARKET TREND</div>
-                                <div id="htf-trend" style="font-size: 18px; font-weight: 800; color: var(--accent-green);">BULLISH</div>
-                                <small id="struct-event" style="color: var(--muted);">Structure: Normal</small>
-                            </div>
-                            <div style="background: #080c14; padding: 14px; border-radius: 10px; border: 1px solid var(--border);">
-                                <div style="font-size: 11px; color: var(--muted); margin-bottom: 4px;">EQUILIBRIUM ZONE (50%)</div>
-                                <div id="zone-status" style="font-size: 15px; font-weight: 800; color: var(--accent-gold);">DISCOUNT ZONE</div>
-                                <small id="eq-val" style="color: var(--muted);">Eq: $0.00</small>
-                            </div>
-                        </div>
-
-                        <div style="background: #080c14; padding: 14px; border-radius: 10px; border: 1px solid var(--border);">
-                            <div style="font-size: 11px; color: var(--muted); margin-bottom: 6px;">FIBONACCI GOLDEN POCKET (0.618 - 0.786 OTE)</div>
-                            <div id="golden-pocket" style="font-size: 16px; font-weight: 700; color: var(--accent-blue); font-family: 'JetBrains Mono';">
-                                $0.00 - $0.00
-                            </div>
-                            <div style="margin-top: 6px; font-size: 12px; color: var(--muted);">
-                                Target 1 (Extension): <span id="tp-ext1" style="color: var(--accent-green);">$0.00</span> | 
-                                Swing High: <span id="swing-h">$0.00</span> | Swing Low: <span id="swing-l">$0.00</span>
-                            </div>
-                        </div>
-
-                        <h4 style="margin: 20px 0 10px 0; font-size: 13.5px; text-transform: uppercase; color: var(--muted);">Live Active SMC Paper Orders</h4>
-                        <div style="overflow-x: auto;">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Symbol</th>
-                                        <th>Side</th>
-                                        <th>Entry</th>
-                                        <th>Stop Loss</th>
-                                        <th>Take Profit</th>
-                                        <th>RRR</th>
-                                        <th>Floating PnL</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="open-trades-tbody">
-                                    <tr><td colspan="8" style="text-align: center; color: var(--muted); padding: 18px;">Scanning 1H/4H candle structure for Golden Pocket order blocks...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Exness Bridge Card -->
-                    <div class="card">
-                        <div class="card-label">Exness Demo Bridge & Execution</div>
-                        <p style="font-size: 13px; color: var(--muted); margin-top: 0;">Synchronizes trades directly with MetaTrader 5 (Exness-MT5Trial)</p>
-                        
-                        <div style="background: #080c14; border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span style="font-size: 13px; color: var(--muted);">Bridge Status:</span>
-                                <span id="exness-status-tag" class="tag tag-gold">STANDBY</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span style="font-size: 13px; color: var(--muted);">Account ID:</span>
-                                <strong id="exness-acc-id" style="font-family: 'JetBrains Mono';">Not Connected</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span style="font-size: 13px; color: var(--muted);">Server:</span>
-                                <span id="exness-server-name">Exness-MT5Trial</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between;">
-                                <span style="font-size: 13px; color: var(--muted);">Leverage:</span>
-                                <span>1:200</span>
-                            </div>
-                        </div>
-
-                        <button class="btn-primary" onclick="openExnessModal()">🔗 Connect / Edit Exness Demo Account</button>
-
-                        <h4 style="margin: 22px 0 10px 0; font-size: 13px; text-transform: uppercase; color: var(--muted);">Recent Settled Trades</h4>
-                        <div id="history-container" style="max-height: 150px; overflow-y: auto; font-size: 12.5px;">
-                            <p style="color: var(--muted);">No closed trades yet.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- TAB 2: AI AGENCY HUB -->
-            <div id="tab-agency" style="display: none;">
-                <div class="grid-2">
-                    <div class="card">
-                        <div class="card-label">AI Social Media Content Queue</div>
-                        <p style="font-size: 13px; color: var(--muted); margin-top: 0;">Autonomous posts generated for Twitter/X and LinkedIn to build audience and agency authority</p>
-                        <div id="social-container"></div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">Client Lead Onboarding Pipeline</div>
-                        <p style="font-size: 13px; color: var(--muted); margin-top: 0;">Incoming leads scored and categorized into service proposals automatically</p>
-                        <div id="leads-container" style="max-height: 380px; overflow-y: auto;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- TAB 3: HOW THE SYSTEM WORKS (EXPLAINER) -->
-            <div id="tab-explainer" style="display: none;">
-                <div class="card" style="max-width: 900px; margin: auto;">
-                    <h2 style="margin-top: 0; color: var(--accent-blue);">🧠 How The Institutional SMC & Fibonacci Engine Operates</h2>
-                    <p style="color: var(--muted); line-height: 1.6;">
-                        Anyone viewing this system can easily understand how our quantitative algorithms eliminate emotions and trade like institutional market makers:
-                    </p>
-
-                    <div class="step-box">
-                        <div class="step-num">1</div>
-                        <div>
-                            <h4 style="margin: 0 0 4px 0; color: #fff;">High Time Frame (HTF) Trend Direction</h4>
-                            <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5;">
-                                The bot evaluates 4H and 1H candles. If the market is printing Higher Highs (HH) and Higher Lows (HL), the trend is <strong>BULLISH</strong>. In a bullish trend, the bot <strong>ONLY buys (Long)</strong> and never shorts. In a bearish trend, it <strong>ONLY sells (Short)</strong>.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="step-box">
-                        <div class="step-num">2</div>
-                        <div>
-                            <h4 style="margin: 0 0 4px 0; color: #fff;">50% Equilibrium (Discount vs. Premium Zone)</h4>
-                            <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5;">
-                                Retail traders buy when prices are expensive. Institutions buy wholesale. The algorithm divides the swing into two halves. It will <strong>ONLY enter buy orders in the Discount Zone (&lt;50% of the move)</strong>.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="step-box">
-                        <div class="step-num">3</div>
-                        <div>
-                            <h4 style="margin: 0 0 4px 0; color: #fff;">Fibonacci Golden Pocket (0.618 - 0.786 OTE)</h4>
-                            <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5;">
-                                The prime mathematical entry point. When price pulls back into the 0.618 to 0.786 Fibonacci retracement zone and meets an <strong>Order Block (OB)</strong> or <strong>Fair Value Gap (FVG)</strong>, the high-probability trigger is primed.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="step-box">
-                        <div class="step-num">4</div>
-                        <div>
-                            <h4 style="margin: 0 0 4px 0; color: #fff;">Chief Risk Officer (Strict 1% Capital Defense)</h4>
-                            <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5;">
-                                No trade is allowed to risk more than <strong>1.0% ($500 on $50k)</strong>. The system calculates exact position sizing based on the distance between Entry and Stop Loss. The minimum Risk-Reward Ratio (RRR) must be <strong>1:2.5 or higher</strong>.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="step-box">
-                        <div class="step-num">5</div>
-                        <div>
-                            <h4 style="margin: 0 0 4px 0; color: #fff;">Exness Bridge & Real-Time Settlement</h4>
-                            <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5;">
-                                The order is simultaneously logged to the internal equity curve and forwarded to the Exness Demo Bridge. Floating PnL is tracked tick-by-tick until Take Profit or Stop Loss is met.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Bottom Console -->
-            <div class="card" style="padding: 16px 20px; margin-top: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <span class="card-label" style="margin: 0;">Institutional Event Stream & Live Telemetry</span>
-                    <span style="font-size: 11px; color: var(--muted);">24/7 Autonomous Core</span>
-                </div>
-                <div class="terminal" id="terminal-logs">
-                    <p>[CORE] Initializing institutional quantitative framework...</p>
+                <div class="section-label" style="margin-top: 16px;">Latest Branding Post</div>
+                <div id="latest-brand-card" style="background:#080c14; border:1px solid var(--border); border-radius:8px; padding:10px; font-size:11.5px;">
+                    <div style="color: var(--accent-purple); font-weight: 700; margin-bottom: 4px;">Twitter / X Thread</div>
+                    <div id="latest-brand-text" style="color: #cbd5e1; line-height: 1.4;">Analyzing SMC footprint...</div>
                 </div>
             </div>
         </div>
 
-        <!-- EXNESS CONNECTION MODAL -->
+        <!-- EXNESS MODAL -->
         <div id="exness-modal" class="modal-bg">
-            <div class="modal-box">
-                <h3 style="margin-top: 0; color: #fff;">⚙️ Connect Exness Demo Account</h3>
-                <p style="font-size: 13px; color: var(--muted);">Enter your Exness MetaTrader 5 demo account credentials to link with the algorithmic desk.</p>
-                
+            <div class="modal-card">
+                <h3 style="margin-top:0; color:#fff;">⚙️ Connect Exness MT5 Demo</h3>
+                <p style="font-size:12px; color:var(--muted); margin-bottom:16px;">Link your Exness demo account to route autonomous SMC trades.</p>
                 <div class="input-group">
-                    <label>Exness Account Number (Login ID)</label>
-                    <input type="text" id="modal-acc-id" placeholder="e.g. 142859102">
+                    <label>Exness Login ID</label>
+                    <input type="text" id="ex-acc-id" placeholder="e.g. 142859102">
                 </div>
                 <div class="input-group">
                     <label>Server</label>
-                    <select id="modal-server">
+                    <select id="ex-server">
                         <option value="Exness-MT5Trial">Exness-MT5Trial</option>
                         <option value="Exness-MT5Trial2">Exness-MT5Trial2</option>
                         <option value="Exness-MT5Trial9">Exness-MT5Trial9</option>
@@ -495,65 +306,299 @@ def control_center():
                     </select>
                 </div>
                 <div class="input-group">
-                    <label>Initial Demo Balance (USD)</label>
-                    <input type="number" id="modal-balance" value="50000">
+                    <label>Demo Capital (USD)</label>
+                    <input type="number" id="ex-balance" value="50000">
                 </div>
-
-                <div style="display: flex; gap: 10px; margin-top: 20px;">
-                    <button class="btn-primary" onclick="submitExnessConnect()">Save & Link Account</button>
-                    <button class="tab-btn" onclick="closeExnessModal()" style="border: 1px solid var(--border);">Cancel</button>
+                <div style="display:flex; gap:10px; margin-top:18px;">
+                    <button class="btn-action" onclick="submitExness()" style="margin:0;">Connect</button>
+                    <button class="btn-action" onclick="closeExnessModal()" style="background:transparent; border:1px solid var(--border); color:#fff; margin:0;">Cancel</button>
                 </div>
             </div>
         </div>
 
+        <!-- THREE.JS 3D VIRTUAL OFFICE SCRIPT -->
         <script>
-            function switchTab(tab) {
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                document.getElementById('tab-trading').style.display = 'none';
-                document.getElementById('tab-agency').style.display = 'none';
-                document.getElementById('tab-explainer').style.display = 'none';
+            let scene, camera, renderer, controls;
+            let wallDisplayCanvas, wallDisplayTexture;
+            let currentEquity = 50000.0, currentBTC = "$65,000.00";
 
-                if (tab === 'trading') {
-                    document.getElementById('tab-trading').style.display = 'block';
-                    event.target.classList.add('active');
-                } else if (tab === 'agency') {
-                    document.getElementById('tab-agency').style.display = 'block';
-                    event.target.classList.add('active');
-                } else if (tab === 'explainer') {
-                    document.getElementById('tab-explainer').style.display = 'block';
-                    event.target.classList.add('active');
+            function init3DOffice() {
+                const container = document.getElementById('canvas-container');
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+
+                // 1. Scene & Camera
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x05070d);
+                scene.fog = new THREE.FogExp2(0x05070d, 0.018);
+
+                camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+                camera.position.set(28, 22, 28);
+
+                // 2. Renderer
+                renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('webgl-canvas'), antialias: true });
+                renderer.setSize(width, height);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.shadowMap.enabled = true;
+
+                // 3. Controls
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.maxPolarAngle = Math.PI / 2.1;
+                controls.target.set(0, 2, 0);
+
+                // 4. Lighting
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
+                scene.add(ambientLight);
+
+                const dirLight = new THREE.DirectionalLight(0x38bdf8, 1.2);
+                dirLight.position.set(20, 35, 15);
+                dirLight.castShadow = true;
+                scene.add(dirLight);
+
+                // Neon accent point lights
+                const neonGreen = new THREE.PointLight(0x10b981, 2, 30);
+                neonGreen.position.set(-6, 8, -6);
+                scene.add(neonGreen);
+
+                const neonPurple = new THREE.PointLight(0xa855f7, 2, 30);
+                neonPurple.position.set(8, 8, 4);
+                scene.add(neonPurple);
+
+                // 5. Floor Grid
+                const floorGeo = new THREE.PlaneGeometry(50, 40);
+                const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0f1d, roughness: 0.7, metalness: 0.2 });
+                const floor = new THREE.Mesh(floorGeo, floorMat);
+                floor.rotation.x = -Math.PI / 2;
+                floor.receiveShadow = true;
+                scene.add(floor);
+
+                const grid = new THREE.GridHelper(50, 50, 0x1e293b, 0x0f172a);
+                grid.position.y = 0.02;
+                scene.add(grid);
+
+                // 6. Giant Wall Display (Back Wall)
+                createWallDisplay();
+
+                // 7. Trading Desks Cluster (Left Side)
+                createDeskCluster(-7, -2, "TRADING FLOOR", 0x38bdf8);
+
+                // 8. Media & Branding Desks Cluster (Right Side)
+                createDeskCluster(7, 3, "BRANDING STUDIO", 0xa855f7);
+
+                // 9. Server Racks (Exness Bridge Gateway)
+                createServerRacks(-15, -12);
+
+                // Resize listener
+                window.addEventListener('resize', onWindowResize);
+                animate();
+            }
+
+            // Create Canvas-based Wall Display Texture
+            function createWallDisplay() {
+                wallDisplayCanvas = document.createElement('canvas');
+                wallDisplayCanvas.width = 1024;
+                wallDisplayCanvas.height = 512;
+                updateWallDisplayCanvas();
+
+                wallDisplayTexture = new THREE.CanvasTexture(wallDisplayCanvas);
+                const screenGeo = new THREE.PlaneGeometry(24, 11);
+                const screenMat = new THREE.MeshBasicMaterial({ map: wallDisplayTexture });
+                const screen = new THREE.Mesh(screenGeo, screenMat);
+                screen.position.set(0, 9, -18);
+                scene.add(screen);
+
+                // Glowing border
+                const borderGeo = new THREE.BoxGeometry(24.4, 11.4, 0.4);
+                const borderMat = new THREE.MeshStandardMaterial({ color: 0x111827, emissive: 0x10b981, emissiveIntensity: 0.25 });
+                const borderMesh = new THREE.Mesh(borderGeo, borderMat);
+                borderMesh.position.set(0, 9, -18.3);
+                scene.add(borderMesh);
+            }
+
+            function updateWallDisplayCanvas() {
+                const ctx = wallDisplayCanvas.getContext('2d');
+                ctx.fillStyle = '#050811';
+                ctx.fillRect(0, 0, 1024, 512);
+
+                // Title & Tickers
+                ctx.fillStyle = '#38bdf8';
+                ctx.font = 'bold 36px "Plus Jakarta Sans"';
+                ctx.fillText('INSTITUTIONAL QUANT DESK · EXNESS MT5', 40, 60);
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '22px "JetBrains Mono"';
+                ctx.fillText('REAL-TIME PORTFOLIO EQUITY CURVE', 40, 100);
+
+                ctx.fillStyle = '#10b981';
+                ctx.font = 'bold 64px "JetBrains Mono"';
+                ctx.fillText(`$${currentEquity.toLocaleString('en-US', {minimumFractionDigits: 2})}`, 40, 175);
+
+                ctx.fillStyle = '#38bdf8';
+                ctx.font = '24px "JetBrains Mono"';
+                ctx.fillText(`BTC TICKER: ${currentBTC} (HTF: BULLISH)`, 40, 220);
+
+                // Glowing Green Chart Line
+                ctx.strokeStyle = '#10b981';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(40, 440);
+                ctx.lineTo(200, 420);
+                ctx.lineTo(360, 450);
+                ctx.lineTo(520, 360);
+                ctx.lineTo(680, 380);
+                ctx.lineTo(840, 290);
+                ctx.lineTo(980, 270);
+                ctx.stroke();
+
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+                ctx.lineTo(980, 480);
+                ctx.lineTo(40, 480);
+                ctx.closePath();
+                ctx.fill();
+
+                if (wallDisplayTexture) wallDisplayTexture.needsUpdate = true;
+            }
+
+            // Create Desk Pods with Multi-monitors and Agents
+            function createDeskCluster(x, z, label, accentColor) {
+                const group = new THREE.Group();
+                group.position.set(x, 0, z);
+
+                // Desk Surface
+                const deskGeo = new THREE.BoxGeometry(9, 1.4, 4);
+                const deskMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.4 });
+                const desk = new THREE.Mesh(deskGeo, deskMat);
+                desk.position.y = 1.4;
+                desk.castShadow = true;
+                group.add(desk);
+
+                // Desk Accent Strip
+                const stripGeo = new THREE.BoxGeometry(9.1, 0.1, 0.1);
+                const stripMat = new THREE.MeshBasicMaterial({ color: accentColor });
+                const strip = new THREE.Mesh(stripGeo, stripMat);
+                strip.position.set(0, 2.1, 2);
+                group.add(strip);
+
+                // 3 Monitors
+                for (let i = -1; i <= 1; i++) {
+                    const monGeo = new THREE.BoxGeometry(2.2, 1.4, 0.1);
+                    const monMat = new THREE.MeshBasicMaterial({ color: 0x0284c7 });
+                    const mon = new THREE.Mesh(monGeo, monMat);
+                    mon.position.set(i * 2.6, 2.9, -0.6);
+                    group.add(mon);
+
+                    // Monitor Stand
+                    const standGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.8);
+                    const standMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
+                    const stand = new THREE.Mesh(standGeo, standMat);
+                    stand.position.set(i * 2.6, 2.4, -0.6);
+                    group.add(stand);
+
+                    // Stylized Robot Agent Seated
+                    createRobotAgent(group, i * 2.6, 0.7, 1.4, accentColor);
+                }
+
+                scene.add(group);
+            }
+
+            // Stylized 3D Robot Agent
+            function createRobotAgent(parent, x, y, z, colorHex) {
+                const agent = new THREE.Group();
+                agent.position.set(x, y, z);
+
+                // Body
+                const bodyGeo = new THREE.BoxGeometry(0.9, 1.1, 0.7);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 1.2;
+                agent.add(body);
+
+                // Head with glowing visor
+                const headGeo = new THREE.BoxGeometry(0.7, 0.6, 0.6);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.y = 2.1;
+                agent.add(head);
+
+                const visorGeo = new THREE.BoxGeometry(0.55, 0.18, 0.05);
+                const visorMat = new THREE.MeshBasicMaterial({ color: colorHex });
+                const visor = new THREE.Mesh(visorGeo, visorMat);
+                visor.position.set(0, 2.1, 0.31);
+                agent.add(visor);
+
+                parent.add(agent);
+            }
+
+            // Server Racks (Gateway)
+            function createServerRacks(x, z) {
+                const rackGeo = new THREE.BoxGeometry(2.4, 7, 2);
+                const rackMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.8 });
+                for (let i = 0; i < 3; i++) {
+                    const rack = new THREE.Mesh(rackGeo, rackMat);
+                    rack.position.set(x + (i * 3.2), 3.5, z);
+                    scene.add(rack);
+
+                    // Blinking LED Strip
+                    const ledGeo = new THREE.BoxGeometry(1.8, 0.08, 0.05);
+                    const ledMat = new THREE.MeshBasicMaterial({ color: i === 1 ? 0x10b981 : 0x38bdf8 });
+                    const led = new THREE.Mesh(ledGeo, ledMat);
+                    led.position.set(x + (i * 3.2), 5, z + 1.02);
+                    scene.add(led);
                 }
             }
 
-            function openExnessModal() {
-                document.getElementById('exness-modal').style.display = 'flex';
-            }
-            function closeExnessModal() {
-                document.getElementById('exness-modal').style.display = 'none';
-            }
+            function setCameraView(view) {
+                document.querySelectorAll('.cam-btn').forEach(b => b.classList.remove('active'));
+                event.target.classList.add('active');
 
-            async function submitExnessConnect() {
-                const accId = document.getElementById('modal-acc-id').value;
-                const server = document.getElementById('modal-server').value;
-                const bal = parseFloat(document.getElementById('modal-balance').value) || 50000;
-
-                if (!accId) {
-                    alert('Please enter your Exness Account Number');
-                    return;
+                if (view === 'iso') {
+                    gsapAnimateCam(28, 22, 28, 0, 2, 0);
+                } else if (view === 'trading') {
+                    gsapAnimateCam(-6, 9, 8, -7, 2, -2);
+                } else if (view === 'branding') {
+                    gsapAnimateCam(9, 9, 14, 7, 2, 3);
+                } else if (view === 'wall') {
+                    gsapAnimateCam(0, 10, 12, 0, 9, -18);
                 }
+            }
 
-                try {
-                    const res = await fetch('/api/exness/connect', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ account_id: accId, server: server, balance: bal })
-                    });
-                    const data = await res.json();
-                    closeExnessModal();
-                    syncTelemetry();
-                } catch(e) {
-                    alert('Error connecting Exness account.');
-                }
+            function gsapAnimateCam(x, y, z, tx, ty, tz) {
+                camera.position.set(x, y, z);
+                controls.target.set(tx, ty, tz);
+            }
+
+            function onWindowResize() {
+                const container = document.getElementById('canvas-container');
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+
+            // API & SYNC LOGIC
+            function openExnessModal() { document.getElementById('exness-modal').style.display = 'flex'; }
+            function closeExnessModal() { document.getElementById('exness-modal').style.display = 'none'; }
+
+            async function submitExness() {
+                const accId = document.getElementById('ex-acc-id').value;
+                const server = document.getElementById('ex-server').value;
+                const bal = parseFloat(document.getElementById('ex-balance').value) || 50000;
+                if (!accId) { alert('Enter Exness Login ID'); return; }
+
+                await fetch('/api/exness/connect', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ account_id: accId, server: server, balance: bal })
+                });
+                closeExnessModal();
+                syncTelemetry();
             }
 
             async function syncTelemetry() {
@@ -561,130 +606,71 @@ def control_center():
                     const res = await fetch('/api/telemetry');
                     const d = await res.json();
 
-                    // Account Stats
-                    document.getElementById('acc-balance').innerText = '$' + d.account.balance.toLocaleString('en-US', {minimumFractionDigits: 2});
-                    document.getElementById('acc-equity').innerText = '$' + d.account.equity.toLocaleString('en-US', {minimumFractionDigits: 2});
+                    // Update Balance
+                    currentEquity = d.account.equity;
+                    document.getElementById('acc-balance').innerText = '$' + d.account.equity.toLocaleString('en-US', {minimumFractionDigits: 2});
                     
-                    const pnlSign = d.account.total_pnl >= 0 ? '+' : '';
-                    const pnlElem = document.getElementById('acc-pnl');
-                    pnlElem.innerText = `${pnlSign}$${d.account.total_pnl.toFixed(2)} (${pnlSign}${d.account.pnl_percent}%)`;
-                    pnlElem.style.color = d.account.total_pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
-
-                    document.getElementById('acc-winrate').innerText = d.account.win_rate + '%';
-                    document.getElementById('acc-trades').innerText = `${d.account.closed_trades_count} Closed | ${d.account.open_trades_count} Active`;
-
-                    // Exness Status
-                    const ex = d.exness;
-                    if (ex && ex.connected) {
-                        document.getElementById('badge-exness-text').innerText = `🔗 Connected: #${ex.account_id}`;
-                        document.getElementById('exness-status-tag').innerText = 'CONNECTED';
-                        document.getElementById('exness-status-tag').className = 'tag tag-green';
-                        document.getElementById('exness-acc-id').innerText = '#' + ex.account_id;
-                        document.getElementById('exness-server-name').innerText = ex.server;
-                        document.getElementById('exness-server-sub').innerText = `Exness: ${ex.server} (#${ex.account_id})`;
-                    } else {
-                        document.getElementById('badge-exness-text').innerText = '⚙️ Connect Exness Demo';
-                        document.getElementById('exness-status-tag').innerText = 'STANDBY';
-                        document.getElementById('exness-status-tag').className = 'tag tag-gold';
+                    // Exness
+                    if (d.exness && d.exness.connected) {
+                        document.getElementById('exness-tag').innerText = `Exness: #${d.exness.account_id} (${d.exness.server})`;
+                        document.getElementById('exness-tag').className = 'badge badge-green';
                     }
 
-                    // Market Analysis
+                    // Market
                     const m = d.market_analysis;
                     if (m && m.current_price) {
-                        document.getElementById('btc-price').innerText = '$' + m.current_price.toLocaleString('en-US', {minimumFractionDigits: 2});
-                        const chgSign = m.change_pct >= 0 ? '+' : '';
-                        document.getElementById('btc-change').innerText = `${chgSign}${m.change_pct.toFixed(2)}% 24h`;
-                        document.getElementById('btc-change').style.color = m.change_pct >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
-
+                        currentBTC = `$${m.current_price.toLocaleString()}`;
+                        document.getElementById('btc-price').innerText = currentBTC;
+                        document.getElementById('btc-chg').innerText = `${m.change_pct >= 0 ? '+' : ''}${m.change_pct.toFixed(2)}%`;
+                        document.getElementById('btc-chg').style.color = m.change_pct >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
                         document.getElementById('htf-trend').innerText = m.trend;
                         document.getElementById('htf-trend').style.color = m.trend === 'BULLISH' ? 'var(--accent-green)' : 'var(--accent-red)';
-                        document.getElementById('struct-event').innerText = 'Event: ' + m.structure_event;
-
-                        document.getElementById('zone-status').innerText = m.zone_status;
-                        document.getElementById('zone-status').style.color = m.zone_status.includes('PRIME') ? 'var(--accent-green)' : 'var(--accent-gold)';
-
-                        if (m.fib_levels && m.fib_levels.golden_pocket_ote) {
-                            const ote = m.fib_levels.golden_pocket_ote;
-                            document.getElementById('golden-pocket').innerText = `$${ote.low.toLocaleString()} - $${ote.high.toLocaleString()}`;
-                            document.getElementById('eq-val').innerText = 'Eq: $' + m.fib_levels.equilibrium_50.toLocaleString();
-                            document.getElementById('tp-ext1').innerText = '$' + m.fib_levels.target_ext_1.toLocaleString();
-                            document.getElementById('swing-h').innerText = '$' + m.swing_high.toLocaleString();
-                            document.getElementById('swing-l').innerText = '$' + m.swing_low.toLocaleString();
-                        }
-                        document.getElementById('market-sync').innerText = 'Last sync: ' + m.last_synced;
+                        document.getElementById('eq-zone').innerText = m.zone_status.includes('DISCOUNT') ? 'DISCOUNT (BUY)' : 'PREMIUM (SELL)';
                     }
 
-                    // Open Trades Table
-                    const tbody = document.getElementById('open-trades-tbody');
-                    if (d.open_trades.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--muted); padding: 18px;">Scanning 1H/4H candle structure for Golden Pocket order blocks...</td></tr>';
-                    } else {
-                        tbody.innerHTML = d.open_trades.map(t => {
-                            const sideTag = t.side === 'BUY' ? 'tag-green' : 'tag-red';
-                            const pnlColor = t.current_pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
-                            const pnlSign = t.current_pnl >= 0 ? '+' : '';
-                            return `
-                                <tr>
-                                    <td>${t.id}</td>
-                                    <td><strong>${t.symbol}</strong></td>
-                                    <td><span class="tag ${sideTag}">${t.side}</span></td>
-                                    <td>$${t.entry_price.toLocaleString()}</td>
-                                    <td style="color: var(--accent-red);">$${t.stop_loss.toLocaleString()}</td>
-                                    <td style="color: var(--accent-green);">$${t.take_profit.toLocaleString()}</td>
-                                    <td>1:${t.rrr}</td>
-                                    <td style="color: ${pnlColor}; font-weight: 700;">${pnlSign}$${t.current_pnl.toFixed(2)}</td>
-                                </tr>
-                            `;
-                        }).join('');
-                    }
+                    // Update 3D LED Wall
+                    updateWallDisplayCanvas();
 
-                    // Trade History
-                    const histElem = document.getElementById('history-container');
-                    if (d.trade_history && d.trade_history.length > 0) {
-                        histElem.innerHTML = d.trade_history.map(th => `
-                            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #161e2e;">
-                                <span>${th.id} (${th.side})</span>
-                                <span style="color:${th.realized_pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}">
-                                    ${th.realized_pnl >= 0 ? '+' : ''}$${th.realized_pnl.toFixed(2)}
-                                </span>
-                            </div>
-                        `).join('');
-                    }
-
-                    // Social Posts Tab
-                    if (d.social_posts && d.social_posts.length > 0) {
-                        document.getElementById('social-container').innerHTML = d.social_posts.map(p => `
-                            <div style="background:#080c14; border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:14px;">
-                                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                                    <span class="tag tag-gold">${p.platform}</span>
-                                    <span style="font-size:11px; color:var(--muted);">${p.created_at}</span>
+                    // Workforce Roster
+                    if (d.agents) {
+                        document.getElementById('agent-roster').innerHTML = d.agents.map(a => `
+                            <div class="agent-row">
+                                <div>
+                                    <span class="agent-dot" style="background: ${a.color}"></span>
+                                    <strong>${a.name}</strong> <small style="color:var(--muted)">(${a.role.split(' ')[0]})</small>
                                 </div>
-                                <div style="font-weight:700; color:#fff; margin-bottom:6px;">${p.topic}</div>
-                                <div style="color:#cbd5e1; font-size:13px; line-height:1.5; white-space:pre-line;">${p.content}</div>
+                                <span style="font-size:10px; color:${a.color}; font-weight:700;">${a.status}</span>
                             </div>
                         `).join('');
                     }
 
-                    // Leads Tab
-                    if (d.leads && d.leads.length > 0) {
-                        document.getElementById('leads-container').innerHTML = d.leads.map(l => `
-                            <div style="background:#080c14; border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px;">
-                                <div style="display:flex; justify-content:space-between;">
-                                    <strong>${l.name} (${l.company})</strong>
-                                    <span class="tag tag-blue">Score: ${l.score}</span>
+                    // Inter-Com Chat Stream
+                    if (d.agent_messages && d.agent_messages.length > 0) {
+                        document.getElementById('chat-stream').innerHTML = d.agent_messages.map(msg => `
+                            <div class="chat-msg">
+                                <div class="chat-meta">
+                                    <span class="chat-author">${msg.agent} (${msg.role})</span>
+                                    <span>${msg.time}</span>
                                 </div>
-                                <p style="font-size:12px; color:var(--muted); margin:4px 0;">Tier: ${l.tier} | Budget: ${l.budget}</p>
+                                <div class="chat-text">${msg.text}</div>
                             </div>
                         `).join('');
                     }
 
-                    // Terminal Logs
-                    document.getElementById('terminal-logs').innerHTML = d.logs.map(l => `<p style="margin: 4px 0;">${l}</p>`).join('');
+                    // Latest Branding Post
+                    if (d.branding_posts && d.branding_posts.length > 0) {
+                        const lp = d.branding_posts[0];
+                        document.getElementById('latest-brand-text').innerText = lp.headline;
+                    }
+
                 } catch(e) {}
             }
 
-            setInterval(syncTelemetry, 3500);
-            syncTelemetry();
+            window.onload = () => {
+                init3DOffice();
+                syncTelemetry();
+                setInterval(syncTelemetry, 3500);
+            };
         </script>
     </body>
     </html>
