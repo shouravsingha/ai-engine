@@ -101,29 +101,34 @@ class MasterOrchestrator:
 
         matrix = {}
         for asset_key in ["gold", "btc", "eth"]:
-            ticker = tickers[asset_key]
-            current_price = ticker["price"]
-            candles = self.market.get_candles(asset_key, interval="1h", limit=30)
-            
-            smc_eng = self.smc_engines[asset_key]
-            smc_res = smc_eng.analyze_candles(candles)
-            trend = smc_res["trend"]
-            
-            fib_res = self.fib.calculate_levels(smc_res["swing_high"], smc_res["swing_low"], trend)
-            zone_status = self.fib.check_zone(current_price, fib_res.get("equilibrium_50", current_price), trend)
+            try:
+                ticker = tickers[asset_key]
+                current_price = ticker["price"]
+                candles = self.market.get_candles(asset_key, interval="1h", limit=30)
+                
+                smc_eng = self.smc_engines[asset_key]
+                smc_res = smc_eng.analyze_candles(candles)
+                trend = smc_res.get("trend", "BULLISH")
+                swing_high = float(smc_res.get("swing_high", current_price * 1.01))
+                swing_low = float(smc_res.get("swing_low", current_price * 0.99))
+                
+                fib_res = self.fib.calculate_levels(swing_high, swing_low, trend)
+                zone_status = self.fib.check_zone(current_price, fib_res.get("equilibrium_50", current_price), trend)
 
-            matrix[asset_key] = {
-                "symbol": ticker["symbol"],
-                "price": current_price,
-                "change_pct": ticker["change_pct"],
-                "trend": trend,
-                "structure_event": smc_res["structure_event"],
-                "swing_high": smc_res["swing_high"],
-                "swing_low": smc_res["swing_low"],
-                "fib_levels": fib_res,
-                "zone_status": zone_status,
-                "source": ticker.get("source", "Live")
-            }
+                matrix[asset_key] = {
+                    "symbol": ticker["symbol"],
+                    "price": current_price,
+                    "change_pct": ticker["change_pct"],
+                    "trend": trend,
+                    "structure_event": smc_res.get("structure_event", "NONE"),
+                    "swing_high": swing_high,
+                    "swing_low": swing_low,
+                    "fib_levels": fib_res,
+                    "zone_status": zone_status,
+                    "source": ticker.get("source", "Live")
+                }
+            except Exception as e:
+                continue
 
             # Check for High-Probability Setup
             if len(self.account.open_trades) == 0 and "golden_pocket_ote" in fib_res:

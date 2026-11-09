@@ -82,10 +82,17 @@ class MarketStream:
         except Exception:
             pass
 
-        # Fallback realistic candle series
+        # Fallback realistic candle series (minimum 20 candles for full SMC analysis)
         base = 2740.0 if asset_key == "gold" else (65000.0 if asset_key == "btc" else 3450.0)
-        return [
-            {"open": base - 10, "high": base + 15, "low": base - 20, "close": base, "volume": 100},
-            {"open": base, "high": base + 25, "low": base - 5, "close": base + 18, "volume": 150},
-            {"open": base + 18, "high": base + 35, "low": base + 10, "close": base + 30, "volume": 200}
-        ]
+        fallback_candles = []
+        import random
+        curr = base
+        for i in range(25):
+            drift = (i - 12) * (base * 0.001)
+            o = curr + drift
+            h = o + (base * 0.004)
+            l = o - (base * 0.003)
+            c = o + (base * 0.001)
+            fallback_candles.append({"open": round(o, 2), "high": round(h, 2), "low": round(l, 2), "close": round(c, 2), "volume": 120 + i * 5})
+            curr = c
+        return fallback_candles

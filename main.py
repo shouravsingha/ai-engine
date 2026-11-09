@@ -8,10 +8,24 @@ from app.core.orchestrator import MasterOrchestrator
 
 app = FastAPI(title="TradingAI · Real-Time Animated OrderFlow & 3D Office with AI Brain")
 orchestrator = MasterOrchestrator()
+cloud_command_queue = []
+
+from app.trading.exness_bridge import start_cloud_tunnel_daemon
 
 @app.on_event("startup")
 def startup_event():
     orchestrator.start_background_loop()
+    start_cloud_tunnel_daemon(orchestrator.exness)
+
+@app.post("/api/bridge/sync")
+def bridge_sync(data: dict):
+    """Tunnel endpoint on Render that ingests live MT5 state from local Windows host."""
+    exness_data = data.get("exness", {})
+    if exness_data:
+        orchestrator.exness.apply_remote_sync(exness_data)
+    commands = list(cloud_command_queue)
+    cloud_command_queue.clear()
+    return {"status": "ok", "commands": commands}
 
 @app.get("/api/telemetry")
 def get_telemetry():
@@ -89,6 +103,14 @@ def set_risk_mode(data: RiskModeInput):
 
 @app.post("/api/trade/panic_flat")
 def panic_flat_all():
+    if not (orchestrator.exness.live_terminal):
+        cloud_command_queue.append({"action": "panic_flat"})
+        closed_count = len(orchestrator.exness.open_positions)
+        orchestrator.exness.open_positions = []
+        orchestrator.account.open_trades.clear()
+        orchestrator.send_agent_message("Marcus", "Risk Officer (PA_02)", f"🚨 EMERGENCY KILL SWITCH TRIGGERED: Dispatched flatten directive to live MT5 terminal.")
+        return {"status": "queued_for_local_mt5", "closed_positions": closed_count}
+
     mt5_flat = orchestrator.exness.close_all_positions()
     closed_count = len(orchestrator.account.open_trades) + mt5_flat.get("total_closed", 0)
     orchestrator.account.open_trades.clear()
@@ -98,6 +120,12 @@ def panic_flat_all():
 
 @app.post("/api/trade/close/{ticket}")
 def close_trade_by_ticket(ticket: int):
+    if not (orchestrator.exness.live_terminal):
+        cloud_command_queue.append({"action": "close", "ticket": ticket})
+        orchestrator.exness.open_positions = [p for p in orchestrator.exness.open_positions if p.get("ticket") != ticket]
+        orchestrator.send_agent_message("Leo", "Execution Trader (PA_14)", f"Cloud Close Directive sent for MT5 Ticket #{ticket}.")
+        return {"status": "queued_for_local_mt5", "ticket": ticket}
+
     res = orchestrator.exness.close_position(ticket)
     orchestrator.send_agent_message("Leo", "Execution Trader (PA_14)", f"Manual Close for MT5 Ticket #{ticket}: {res.get('status', 'processed')}.")
     return res
@@ -110,6 +138,20 @@ def direct_execute(data: dict):
     sl = price * 0.996 if side == "BUY" else price * 1.004
     tp = price * 1.012 if side == "BUY" else price * 0.988
     
+    if not (orchestrator.exness.live_terminal):
+        cloud_command_queue.append({
+            "action": "execute",
+            "symbol": symbol,
+            "side": side,
+            "volume": 0.01,
+            "sl": sl,
+            "tp": tp
+        })
+        plan = orchestrator.risk.evaluate_and_size_trade(orchestrator.exness.balance, side, price, sl, tp)
+        order = orchestrator.account.open_trade(plan if plan else {"side": side, "entry_price": price, "stop_loss": sl, "take_profit": tp, "dollar_risk": 0.20, "units": 0.01}, symbol=symbol)
+        orchestrator.send_agent_message("Leo", "Execution Trader (PA_14)", f"Cloud Trade Directive queued: {side} 0.01 {symbol} for live local MT5!")
+        return {"status": "queued_for_local_mt5", "message": f"Queued {side} {symbol} for local MT5 terminal.", "order": order}
+
     # 1. Execute directly on physical Exness MT5 Terminal
     mt5_res = orchestrator.exness.execute_live_order(symbol, side, volume=0.01, sl=sl, tp=tp)
     
@@ -1242,15 +1284,19 @@ def index():
                         const subEq = document.getElementById('subhead-eq');
                         if (subEq) subEq.innerText = `$${eq} USD`;
 
+                        const subPnl = document.getElementById('subhead-pnl');
+                        if (subPnl) {
+                            subPnl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl} USD`;
+                            subPnl.style.color = pnl >= 0 ? '#10b981' : '#ef4444';
+                        }
+
                         const subDeal = document.getElementById('subhead-deal');
                         if (subDeal) {
                             if (openCount > 0 && d.exness.open_positions[0]) {
                                 const pos = d.exness.open_positions[0];
-                                subDeal.innerText = `${pos.symbol} (${pos.side} ${pos.volume} Lot) Ticket #${pos.ticket} · PnL: $${pos.profit >= 0 ? '+' : ''}${pos.profit}`;
-                                subDeal.style.color = pos.profit >= 0 ? 'var(--of-green-line)' : 'var(--of-red-line)';
+                                subDeal.innerHTML = `Active: <b style="color:var(--of-blue);">${pos.symbol}</b> ${pos.side} ${pos.volume} (<span style="color:${pos.profit >= 0 ? '#10b981' : '#ef4444'}; font-weight:800;">${pos.profit >= 0 ? '+' : ''}$${pos.profit}</span>) <button onclick="closeTrade(${pos.ticket})" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444; border-radius: 4px; padding: 1px 5px; font-size: 9px; cursor: pointer; margin-left: 4px;">✕ Close</button>`;
                             } else {
-                                subDeal.innerText = 'Scanning for High-Conviction SMC Breakout...';
-                                subDeal.style.color = 'var(--of-text-muted)';
+                                subDeal.innerHTML = `<span style="color:var(--of-text-muted);">0 Active MT5 Positions · Scanning OrderFlow</span>`;
                             }
                         }
 
