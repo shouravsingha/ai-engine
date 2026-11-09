@@ -196,24 +196,39 @@ class ExnessBridge:
             if not s_info.visible:
                 mt5.symbol_select(sym, True)
 
-            order_type = mt5.ORDER_TYPE_BUY if side.upper() == "BUY" else mt5.ORDER_TYPE_SELL
-            price = mt5.symbol_info_tick(sym).ask if side.upper() == "BUY" else mt5.symbol_info_tick(sym).bid
-            point = s_info.point
+            # Auto-align volume with broker minimum specification
+            min_vol = float(s_info.volume_min) if hasattr(s_info, 'volume_min') else 0.01
+            vol_step = float(s_info.volume_step) if hasattr(s_info, 'volume_step') else 0.01
+            req_vol = max(float(volume), min_vol)
+            # Round to volume step
+            req_vol = round(req_vol, 2)
 
-            # Calculate SL and TP if not provided
+            order_type = mt5.ORDER_TYPE_BUY if side.upper() == "BUY" else mt5.ORDER_TYPE_SELL
+            tick_now = mt5.symbol_info_tick(sym)
+            if not tick_now:
+                return {"status": "error", "message": f"Could not pull price for {sym}"}
+            price = tick_now.ask if side.upper() == "BUY" else tick_now.bid
+
+            # Robust SL and TP calculation avoiding spread invalidation
             if sl == 0.0:
-                sl = price - 150 * point if side.upper() == "BUY" else price + 150 * point
+                sl_dist = price * 0.008 if ("BTC" in sym or "ETH" in sym or "XAU" in sym) else (150 * s_info.point)
+                sl = price - sl_dist if side.upper() == "BUY" else price + sl_dist
             if tp == 0.0:
-                tp = price + 300 * point if side.upper() == "BUY" else price - 300 * point
+                tp_dist = price * 0.016 if ("BTC" in sym or "ETH" in sym or "XAU" in sym) else (300 * s_info.point)
+                tp = price + tp_dist if side.upper() == "BUY" else price - tp_dist
+
+            digits = s_info.digits if hasattr(s_info, 'digits') else 2
+            sl = round(float(sl), digits)
+            tp = round(float(tp), digits)
 
             req = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": sym,
-                "volume": float(volume),
+                "volume": req_vol,
                 "type": order_type,
                 "price": price,
-                "sl": float(sl),
-                "tp": float(tp),
+                "sl": sl,
+                "tp": tp,
                 "deviation": 20,
                 "magic": 202611,
                 "comment": "TradingAI Live Execution",

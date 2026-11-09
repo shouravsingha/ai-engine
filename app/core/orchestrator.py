@@ -131,27 +131,38 @@ class MasterOrchestrator:
                 continue
 
             # Check for High-Probability Setup
-            if len(self.account.open_trades) == 0 and "golden_pocket_ote" in fib_res:
+            if len(self.exness.open_positions) < 3 and "golden_pocket_ote" in fib_res:
                 if trend == "BULLISH" and "DISCOUNT" in zone_status:
                     entry = current_price
-                    sl = smc_res["swing_low"] * 0.998
-                    tp = fib_res["target_ext_1"]
-                    symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDT" if asset_key == "btc" else "ETHUSDT")
-                    
-                    trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, "BUY", entry, sl, tp)
-                    if trade_plan:
-                        # AUDIT BY AI CENTRAL NEURAL BRAIN
-                        audit = self.brain.audit_trade_proposal("Alex & Marcus", symbol_exec, "BUY", trade_plan["risk_reward_ratio"], 1.0)
-                        
-                        order = self.account.open_trade(trade_plan, symbol=symbol_exec)
-                        asset_title = ticker["symbol"]
-                        self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} trade verified. 100% compliant with institutional rules.")
-                        self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ORDERFLOW DISPLACEMENT: High volume absorption on {asset_title}!")
-                        self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} filled 0.618 Golden Pocket at ${entry:,.2f} in Discount Zone.")
-                        self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Order executed on Exness MT5! Ticket EXN-{order['id']} active.")
+                    sl = float(smc_res["swing_low"] * 0.998)
+                    tp = float(fib_res["target_ext_1"])
+                    symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDm" if asset_key == "btc" else "ETHUSDm")
+                    vol = 0.1 if asset_key == "eth" else 0.01
 
-                        self.telegram.send_trade_signal(order, asset=asset_title)
-                        self.webhooks.broadcast_trade(order, asset=asset_title)
+                    # Check if already open on this symbol to prevent duplicate spam
+                    already_open = any(p.get("symbol") == symbol_exec for p in self.exness.open_positions)
+                    if not already_open:
+                        trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, "BUY", entry, sl, tp)
+                        if trade_plan:
+                            # 1. AUDIT BY AI CENTRAL NEURAL BRAIN
+                            audit = self.brain.audit_trade_proposal("Alex & Marcus", symbol_exec, "BUY", trade_plan["risk_reward_ratio"], 1.0)
+                            
+                            # 2. REAL EXECUTION ON EXNESS MT5
+                            mt5_res = self.exness.execute_live_order(symbol_exec, "BUY", volume=vol, sl=sl, tp=tp)
+                            
+                            # 3. Log internal order
+                            order = self.account.open_trade(trade_plan, symbol=symbol_exec)
+                            ticket_no = mt5_res.get("ticket", order["id"])
+                            order["mt5_ticket"] = ticket_no
+
+                            asset_title = ticker["symbol"]
+                            self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} trade verified. 100% compliant with institutional rules.")
+                            self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ORDERFLOW DISPLACEMENT: High volume absorption on {asset_title}!")
+                            self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} filled 0.618 Golden Pocket at ${entry:,.2f} in Discount Zone.")
+                            self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED on Exness MT5! Ticket #{ticket_no} active.")
+
+                            self.telegram.send_trade_signal(order, asset=asset_title)
+                            self.webhooks.broadcast_trade(order, asset=asset_title)
 
         self.multi_market_matrix = matrix
 
