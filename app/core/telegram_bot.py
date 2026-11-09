@@ -3,7 +3,6 @@ Autonomous Telegram Sentinel Bot (TradingAI / @SingAiTradebot)
 Sends real-time high-conviction Gold & BTC trade alerts, PnL updates,
 and accepts interactive remote commands from the user.
 """
-import os
 import requests
 import threading
 import time
@@ -17,8 +16,6 @@ class TelegramSentinelBot:
         chat_id: str = "5347514050",
         command_handler: Optional[Callable[[str], str]] = None
     ):
-        # Telegram bot enabled as before
-        self.enabled = os.environ.get("TELEGRAM_ENABLED", "true").lower() in ("true", "1", "yes")
         self.token = token
         self.chat_id = chat_id
         self.command_handler = command_handler
@@ -28,8 +25,6 @@ class TelegramSentinelBot:
 
     def send_message(self, message: str) -> bool:
         """Sends an HTML formatted alert to Telegram."""
-        if not self.enabled:
-            return False
         if not self.token or not self.chat_id:
             return False
 
@@ -92,8 +87,6 @@ Closed At: {datetime.now().strftime('%H:%M:%S UTC')}
 
     def start_polling(self):
         """Polls for incoming Telegram commands in a lightweight background thread."""
-        if not self.enabled:
-            return
         if self.is_running:
             return
         self.is_running = True
@@ -116,9 +109,6 @@ Closed At: {datetime.now().strftime('%H:%M:%S UTC')}
                                 reply = self.handle_command(text)
                                 if reply:
                                     self.send_message(reply)
-                    elif res.status_code == 409:
-                        # Another instance polling Telegram; back off gracefully
-                        time.sleep(10)
                 except Exception:
                     pass
                 time.sleep(2)

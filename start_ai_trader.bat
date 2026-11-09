@@ -16,7 +16,6 @@ echo Waiting for MT5 Terminal to connect to Exness broker...
 ping 127.0.0.1 -n 6 >nul
 
 echo [2/2] Launching AI Engine, OrderFlow Matrix ^& Cloud Tunnel...
-set PYTHONUNBUFFERED=1
 cd /d "C:\Users\HP\ai-engine"
-python -u -m uvicorn main:app --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
 pause

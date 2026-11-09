@@ -39,90 +39,11 @@ def get_telemetry():
         "agents": orchestrator.agents,
         "agent_messages": orchestrator.agent_messages,
         "open_trades": exness_status.get("open_positions", []),
-        "trade_history": orchestrator.journal.get_recent_trades(limit=50),
-        "account_stats": orchestrator.journal.get_account_stats(),
+        "trade_history": orchestrator.account.trade_history[-10:],
         "branding_posts": orchestrator.branding.get_feed(),
-        "telegram_status": {"bot": "@SingAiTradebot", "active": orchestrator.telegram.is_running, "enabled": orchestrator.telegram.enabled},
+        "telegram_status": {"bot": "@SingAiTradebot", "active": orchestrator.telegram.is_running},
         "webhooks": orchestrator.webhooks.webhooks,
         "logs": orchestrator.system_logs
-    })
-
-class VoiceInput(BaseModel):
-    transcript: Optional[str] = None
-    message: Optional[str] = None
-
-@app.post("/api/voice/chat")
-def voice_chat(data: VoiceInput):
-    transcript = (data.transcript or data.message or "").strip()
-    orchestrator.send_agent_message("You (Voice)", "Director", f"🎙️ \"{transcript}\"")
-    ex_status = orchestrator.exness.get_status()
-    context = {
-        "balance": ex_status.get("balance", 0.0),
-        "equity": ex_status.get("equity", 0.0),
-        "floating_pnl": ex_status.get("floating_pnl", 0.0),
-        "open_positions": ex_status.get("open_positions", [])
-    }
-    res = orchestrator.brain.process_voice_directive(transcript, context)
-    
-    if res.get("action") == "panic_flat":
-        orchestrator.exness.close_all_positions()
-        orchestrator.send_agent_message("Marcus", "Risk Officer (PA_02)", "🚨 Voice directive executed: All positions flattened.")
-    elif res.get("action") == "breakeven":
-        sym = res.get("symbol")
-        for pos in ex_status.get("open_positions", []):
-            if not sym or sym.lower() in pos.get("symbol", "").lower():
-                orchestrator.exness.modify_position_sl_tp(pos.get("ticket"), sl=pos.get("open_price"), tp=pos.get("tp"))
-                orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ Voice command: Moved SL to break-even on {pos.get('symbol')} #{pos.get('ticket')}")
-    elif res.get("action") == "trailing":
-        for pos in ex_status.get("open_positions", []):
-            profit = float(pos.get("profit", 0.0))
-            if profit > 0:
-                side = pos.get("side", "BUY")
-                curr = float(pos.get("current_price", 0.0))
-                open_p = float(pos.get("open_price", 0.0))
-                trail_sl = round(open_p + (curr - open_p) * 0.5, 4) if side == "BUY" else round(open_p - (open_p - curr) * 0.5, 4)
-                orchestrator.exness.modify_position_sl_tp(pos.get("ticket"), sl=trail_sl, tp=pos.get("tp"))
-                orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"📈 Trailing stop locked on {pos.get('symbol')} at {trail_sl}")
-    elif res.get("action") == "quick_buy_gold":
-        orchestrator.exness.execute_live_order("XAUUSDm", "BUY", 0.01)
-        orchestrator.send_agent_message("AI Brain", "Neural Overseer", "⚡ Voice command: Executed 0.01 Lot BUY on Gold (XAUUSDm)")
-
-    orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"🗣️ {res['reply_text']}")
-    return JSONResponse({
-        "reply": res["reply_text"],
-        "action": res.get("action"),
-        "brain_status": res.get("brain_status"),
-        "cognitive_load": res.get("cognitive_load")
-    })
-
-@app.get("/api/trades/history")
-def get_trade_history():
-    return JSONResponse({
-        "trades": orchestrator.journal.get_recent_trades(limit=50),
-        "stats": orchestrator.journal.get_account_stats()
-    })
-
-@app.get("/api/account/metrics")
-def get_account_metrics():
-    ex_status = orchestrator.exness.get_status()
-    stats = orchestrator.journal.get_account_stats()
-    bal = float(ex_status.get("balance", 0.0))
-    eq = float(ex_status.get("equity", 0.0))
-    pnl = float(ex_status.get("floating_pnl", 0.0))
-    open_count = len(ex_status.get("open_positions", []))
-    margin = round(open_count * 0.56, 2)
-    free_margin = round(eq - margin, 2)
-    margin_level = round((eq / margin * 100), 1) if margin > 0 else 1000.0
-    return JSONResponse({
-        "balance": bal,
-        "equity": eq,
-        "floating_pnl": pnl,
-        "margin": margin,
-        "free_margin": free_margin,
-        "margin_level_pct": margin_level,
-        "open_positions_count": open_count,
-        "stats": stats,
-        "brain_status": orchestrator.brain.get_status()
     })
 
 class TaskInput(BaseModel):
@@ -598,11 +519,6 @@ def index():
                     overflow-x: hidden;
                     width: 100%;
                 }
-                .dock-3d {
-                    bottom: 16px !important;
-                    overflow-x: auto;
-                    max-width: 95%;
-                }
                 .top-nav-bar {
                     padding: 8px 10px;
                     flex-wrap: wrap;
@@ -955,9 +871,7 @@ def index():
                         <span>Balance: <strong style="color: var(--of-blue); font-size: 12px;" id="subhead-bal">$20.21 USD</strong></span>
                         <span>Equity: <strong id="subhead-eq" style="color: var(--of-green-line); font-size: 12px;">$20.21 USD</strong></span>
                         <span>PnL: <strong id="subhead-pnl" style="color: #10b981; font-size: 12px;">+$0.00 USD</strong></span>
-                        <span>Margin Level: <strong id="subhead-margin-lvl" style="color: #38bdf8; font-size: 12px;">820%</strong></span>
-                        <span>Win Rate: <strong id="subhead-win-rate" style="color: #10b981; font-size: 12px;">--%</strong></span>
-                        <span>Brain: <strong id="subhead-brain-mode" style="color: #ec4899; font-size: 12px;">ACTIVE</strong></span>
+                        <span style="color: var(--of-text-muted);">| 12 up · 8 flat · 10 down</span>
                     </div>
                     <div class="subhead-row-2" style="display: flex; align-items: center; gap: 8px;">
                         <span id="subhead-deal" style="background: var(--of-card); border: 1px solid var(--of-border); padding: 3px 8px; border-radius: 6px; font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--of-blue); display: flex; align-items: center; gap: 6px;">
@@ -1032,107 +946,6 @@ def index():
 
                     <!-- 5. RIGHT FOCUS CARDS (SIEMENS, SENSEX, HINDALCO, BRITANNIA MATCH) -->
                     <div class="of-cards-col" id="focus-cards-box"></div>
-                </div>
-            </div>
-
-            <!-- INSTITUTIONAL MT5 TERMINAL & PERSISTENT TRADE JOURNAL PANEL -->
-            <div style="margin-top: 24px; background: var(--of-card); border: 1px solid var(--of-border-strong); border-radius: 16px; padding: 20px; box-shadow: var(--of-shadow);">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--of-border); padding-bottom: 14px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="font-size: 22px;">⚡</span>
-                        <div>
-                            <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--of-text-dark);">Institutional MT5 Execution & AI Brain Journal</h3>
-                            <small style="color: var(--of-text-muted); font-size: 11px;">Active Break-Even Shield, Trailing Stops & Persistent SQLite Trade Records</small>
-                        </div>
-                    </div>
-
-                    <!-- Panel Tabs -->
-                    <div style="display: flex; gap: 8px;">
-                        <button id="tab-btn-active" onclick="switchTradeTab('active')" style="background: #0284c7; color: #fff; border: 1px solid #0284c7; padding: 6px 14px; border-radius: 8px; font-size: 11.5px; font-weight: 800; cursor: pointer;">
-                            Live Open Trades (<span id="panel-tab-count">0</span>)
-                        </button>
-                        <button id="tab-btn-history" onclick="switchTradeTab('history')" style="background: var(--of-card-subtle); color: var(--of-text-muted); border: 1px solid var(--of-border); padding: 6px 14px; border-radius: 8px; font-size: 11.5px; font-weight: 800; cursor: pointer;">
-                            📜 Trade History (SQLite Database)
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Account Metrics Highlights -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 18px;">
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
-                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">BALANCE</div>
-                        <div id="card-acc-balance" style="font-size: 15px; font-weight: 800; color: var(--of-blue);">$17.94</div>
-                    </div>
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
-                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">EQUITY</div>
-                        <div id="card-acc-equity" style="font-size: 15px; font-weight: 800; color: var(--of-green-line);">$22.31</div>
-                    </div>
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
-                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">FREE MARGIN</div>
-                        <div id="card-acc-margin" style="font-size: 15px; font-weight: 800; color: var(--of-text-dark);">$21.19</div>
-                    </div>
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
-                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">MARGIN LEVEL</div>
-                        <div id="card-acc-margin-lvl" style="font-size: 15px; font-weight: 800; color: #38bdf8;">823%</div>
-                    </div>
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
-                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">WIN RATE</div>
-                        <div id="card-acc-win-rate" style="font-size: 15px; font-weight: 800; color: var(--of-green-line);">--%</div>
-                    </div>
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
-                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">DAILY PNL</div>
-                        <div id="card-acc-daily-pnl" style="font-size: 15px; font-weight: 800; color: #facc15;">+$0.00</div>
-                    </div>
-                </div>
-
-                <!-- Table 1: Live Open MT5 Positions -->
-                <div id="tab-content-active">
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
-                            <thead>
-                                <tr style="border-bottom: 2px solid var(--of-border); color: var(--of-text-muted); font-size: 11px;">
-                                    <th style="padding: 8px;">TICKET</th>
-                                    <th style="padding: 8px;">ASSET</th>
-                                    <th style="padding: 8px;">SIDE</th>
-                                    <th style="padding: 8px;">VOLUME</th>
-                                    <th style="padding: 8px;">ENTRY</th>
-                                    <th style="padding: 8px;">CURRENT</th>
-                                    <th style="padding: 8px;">STOP LOSS</th>
-                                    <th style="padding: 8px;">TAKE PROFIT</th>
-                                    <th style="padding: 8px;">FLOATING PNL</th>
-                                    <th style="padding: 8px; text-align: right;">ACTION</th>
-                                </tr>
-                            </thead>
-                            <tbody id="open-positions-tbody">
-                                <tr><td colspan="10" style="padding: 20px; text-align: center; color: var(--of-text-muted);">Syncing live MT5 positions...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Table 2: Persistent Trade History (SQLite) -->
-                <div id="tab-content-history" style="display: none;">
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
-                            <thead>
-                                <tr style="border-bottom: 2px solid var(--of-border); color: var(--of-text-muted); font-size: 11px;">
-                                    <th style="padding: 8px;">TICKET</th>
-                                    <th style="padding: 8px;">ASSET</th>
-                                    <th style="padding: 8px;">SIDE</th>
-                                    <th style="padding: 8px;">LOT</th>
-                                    <th style="padding: 8px;">OPEN PRICE</th>
-                                    <th style="padding: 8px;">CLOSE PRICE</th>
-                                    <th style="padding: 8px;">PROFIT (USD)</th>
-                                    <th style="padding: 8px;">STATUS</th>
-                                    <th style="padding: 8px;">EXIT RATIONALE</th>
-                                    <th style="padding: 8px;">TIMESTAMP</th>
-                                </tr>
-                            </thead>
-                            <tbody id="trade-history-tbody">
-                                <tr><td colspan="10" style="padding: 20px; text-align: center; color: var(--of-text-muted);">Loading persistent journal records from SQLite...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
                 </div>
             </div>
 
@@ -1232,6 +1045,7 @@ def index():
                     </button>
                 </div>
             </div>
+        </div>
 
         <!-- VIEW 2: 3D ROBOT OFFICE WITH AI CENTRAL NEURAL BRAIN -->
         <div id="view-3d-floor">
@@ -1961,8 +1775,6 @@ def index():
                         if (pMargin) pMargin.innerText = `$${freeMargin} USD`;
                         const pCount = document.getElementById('panel-open-count');
                         if (pCount) pCount.innerText = openCount;
-                        const pTabCount = document.getElementById('panel-tab-count');
-                        if (pTabCount) pTabCount.innerText = openCount;
 
                         // Exness Open Positions Table Rows
                         const tbody = document.getElementById('open-positions-tbody');
@@ -2009,144 +1821,6 @@ def index():
                         }
                     }
                 } catch(e) {}
-            }
-
-            // --- PERSISTENT JOURNAL & METRICS TAB CONTROLS ---
-            let currentTradeTab = 'active';
-
-            function switchTradeTab(tab) {
-                currentTradeTab = tab;
-                const activeTabBtn = document.getElementById('tab-btn-active');
-                const historyTabBtn = document.getElementById('tab-btn-history');
-                const activeContent = document.getElementById('tab-content-active');
-                const historyContent = document.getElementById('tab-content-history');
-
-                if (tab === 'active') {
-                    if (activeContent) activeContent.style.display = 'block';
-                    if (historyContent) historyContent.style.display = 'none';
-                    if (activeTabBtn) {
-                        activeTabBtn.style.background = '#0284c7';
-                        activeTabBtn.style.color = '#fff';
-                        activeTabBtn.style.borderColor = '#0284c7';
-                    }
-                    if (historyTabBtn) {
-                        historyTabBtn.style.background = 'var(--of-card-subtle)';
-                        historyTabBtn.style.color = 'var(--of-text-muted)';
-                        historyTabBtn.style.borderColor = 'var(--of-border)';
-                    }
-                } else {
-                    if (activeContent) activeContent.style.display = 'none';
-                    if (historyContent) historyContent.style.display = 'block';
-                    if (historyTabBtn) {
-                        historyTabBtn.style.background = '#0284c7';
-                        historyTabBtn.style.color = '#fff';
-                        historyTabBtn.style.borderColor = '#0284c7';
-                    }
-                    if (activeTabBtn) {
-                        activeTabBtn.style.background = 'var(--of-card-subtle)';
-                        activeTabBtn.style.color = 'var(--of-text-muted)';
-                        activeTabBtn.style.borderColor = 'var(--of-border)';
-                    }
-                    fetchTradeHistory();
-                }
-            }
-
-            async function fetchTradeHistory() {
-                try {
-                    const res = await fetch('/api/trades/history?limit=30');
-                    const d = await res.json();
-                    const tbody = document.getElementById('trade-history-tbody');
-                    if (!tbody) return;
-
-                    if (!d.trades || d.trades.length === 0) {
-                        tbody.innerHTML = `<tr><td colspan="10" style="padding: 24px; text-align: center; color: var(--of-text-muted); font-style: italic;">No historical trade records found in SQLite database yet. Trades will be recorded automatically when opened/closed.</td></tr>`;
-                        return;
-                    }
-
-                    tbody.innerHTML = d.trades.map(t => {
-                        const isBuy = t.action === 'BUY';
-                        const profit = Number(t.pnl_usd || 0.0);
-                        const isWin = profit >= 0;
-                        const dateStr = t.closed_at || t.timestamp || '';
-                        const formattedDate = dateStr ? dateStr.replace('T', ' ').split('.')[0] : '--';
-                        return `
-                            <tr style="border-bottom: 1px solid var(--of-border);">
-                                <td style="padding: 8px 10px; font-weight: 800; color: var(--of-blue);">#${t.ticket}</td>
-                                <td style="padding: 8px 10px; font-weight: 800; color: var(--of-text-dark);">${t.symbol}</td>
-                                <td style="padding: 8px 10px;">
-                                    <span style="background: ${isBuy ? 'var(--of-green-bg)' : 'var(--of-red-bg)'}; color: ${isBuy ? 'var(--of-green-line)' : 'var(--of-red-line)'}; padding: 2px 7px; border-radius: 4px; font-weight: 800; font-size: 10px;">
-                                        ${t.action}
-                                    </span>
-                                </td>
-                                <td style="padding: 8px 10px; font-weight: 700;">${Number(t.volume || 0.01).toFixed(2)}</td>
-                                <td style="padding: 8px 10px;">${Number(t.open_price || 0).toFixed(4)}</td>
-                                <td style="padding: 8px 10px;">${t.close_price ? Number(t.close_price).toFixed(4) : '--'}</td>
-                                <td style="padding: 8px 10px; font-weight: 800; color: ${isWin ? 'var(--of-green-line)' : 'var(--of-red-line)'};">
-                                    ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}
-                                </td>
-                                <td style="padding: 8px 10px;">
-                                    <span style="background: ${t.status === 'CLOSED' ? 'rgba(100,116,139,0.2)' : 'rgba(16,185,129,0.2)'}; color: ${t.status === 'CLOSED' ? '#94a3b8' : '#10b981'}; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;">
-                                        ${t.status}
-                                    </span>
-                                </td>
-                                <td style="padding: 8px 10px; font-size: 11px; color: var(--of-text-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${t.notes || ''}">
-                                    ${t.notes || 'Autonomous AI Execution'}
-                                </td>
-                                <td style="padding: 8px 10px; font-size: 10.5px; color: var(--of-text-muted); font-family: 'JetBrains Mono';">
-                                    ${formattedDate}
-                                </td>
-                            </tr>
-                        `;
-                    }).join('');
-                } catch (e) {
-                    console.error("Failed to fetch trade history:", e);
-                }
-            }
-
-            async function updateAccountMetrics() {
-                try {
-                    const res = await fetch('/api/account/metrics');
-                    const d = await res.json();
-                    if (!d) return;
-                    const m = d.metrics || d;
-                    const stats = m.stats || {};
-                    const winRate = m.win_rate_pct !== undefined ? m.win_rate_pct : (stats.win_rate_pct || 0);
-                    const dailyPnl = m.daily_pnl_usd !== undefined ? m.daily_pnl_usd : (stats.daily_pnl_usd || 0);
-                    const brainMode = m.brain_mode || (m.brain_status ? m.brain_status.state : 'active');
-                    const brainEnergy = m.brain_energy !== undefined ? m.brain_energy : (m.brain_status ? m.brain_status.energy : 88);
-
-                    // Update Institutional Cards
-                    const cBal = document.getElementById('card-acc-balance');
-                    if (cBal) cBal.innerText = `$${Number(m.balance || 0).toFixed(2)}`;
-                    const cEq = document.getElementById('card-acc-equity');
-                    if (cEq) cEq.innerText = `$${Number(m.equity || 0).toFixed(2)}`;
-                    const cMargin = document.getElementById('card-acc-margin');
-                    if (cMargin) cMargin.innerText = `$${Number(m.free_margin || 0).toFixed(2)}`;
-                    const cMarginLvl = document.getElementById('card-acc-margin-lvl');
-                    if (cMarginLvl) cMarginLvl.innerText = `${Math.round(m.margin_level_pct || 0)}%`;
-                    const cWinRate = document.getElementById('card-acc-win-rate');
-                    if (cWinRate) cWinRate.innerText = `${Number(winRate).toFixed(1)}%`;
-                    const cDailyPnl = document.getElementById('card-acc-daily-pnl');
-                    if (cDailyPnl) {
-                        const dp = Number(dailyPnl);
-                        cDailyPnl.innerText = `${dp >= 0 ? '+' : ''}$${dp.toFixed(2)}`;
-                        cDailyPnl.style.color = dp >= 0 ? 'var(--of-green-line)' : 'var(--of-red-line)';
-                    }
-
-                    // Update Window Subheader Badges
-                    const subMarginLvl = document.getElementById('subhead-margin-lvl');
-                    if (subMarginLvl) subMarginLvl.innerText = `${Math.round(m.margin_level_pct || 0)}%`;
-                    const subWinRate = document.getElementById('subhead-win-rate');
-                    if (subWinRate) subWinRate.innerText = `${Number(winRate).toFixed(1)}%`;
-                    const subBrainMode = document.getElementById('subhead-brain-mode');
-                    if (subBrainMode) {
-                        const mode = String(brainMode).toUpperCase();
-                        subBrainMode.innerText = `${mode} (${Math.round(brainEnergy)}%)`;
-                        subBrainMode.style.color = mode === 'RESTING' ? '#38bdf8' : '#ec4899';
-                    }
-                } catch (e) {
-                    console.error("Failed to update account metrics:", e);
-                }
             }
 
             // 3D Engine with AI Central Neural Brain & 7 Seated Robot Employees
@@ -2212,8 +1886,6 @@ def index():
                 function loop() {
                     requestAnimationFrame(loop);
                     controls.update();
-
-                    const t = Date.now() * 0.003;
 
                     if (brainCoreMesh) {
                         brainCoreMesh.rotation.y += 0.015;
@@ -2334,10 +2006,7 @@ def index():
                 initRiverParticles();
                 animateRiverLoop();
                 syncData();
-                updateAccountMetrics();
-                fetchTradeHistory();
                 setInterval(syncData, 2000);
-                setInterval(updateAccountMetrics, 4000);
             };
 
             window.onresize = () => {
