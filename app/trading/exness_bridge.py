@@ -314,6 +314,58 @@ class ExnessBridge:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    def modify_position_sl_tp(self, ticket: int, new_sl: float, new_tp: float = 0.0) -> Dict[str, Any]:
+        """Modifies Stop Loss and Take Profit of a live MT5 position (Break-Even or Trailing Stop)."""
+        if not (MT5_AVAILABLE and self.live_terminal):
+            # Cloud (Render) mode without direct Windows MT5: queue for laptop tunnel!
+            self.command_queue.append({
+                "action": "modify",
+                "ticket": int(ticket),
+                "sl": float(new_sl),
+                "tp": float(new_tp)
+            })
+            return {"status": "queued", "ticket": ticket, "message": f"Queued SL/TP update for #{ticket}"}
+
+        try:
+            positions = mt5.positions_get(ticket=int(ticket))
+            if not positions:
+                return {"status": "error", "message": f"Position #{ticket} not found on MT5"}
+
+            pos = positions[0]
+            sym = pos.symbol
+            s_info = mt5.symbol_info(sym)
+            digits = s_info.digits if s_info else 2
+
+            final_sl = round(float(new_sl), digits)
+            final_tp = round(float(new_tp if new_tp > 0 else pos.tp), digits)
+
+            req = {
+                "action": mt5.TRADE_ACTION_SLTP,
+                "position": pos.ticket,
+                "symbol": sym,
+                "sl": final_sl,
+                "tp": final_tp,
+            }
+            res = mt5.order_send(req)
+            if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                self.refresh_balance()
+                print(f"[MT5 SL/TP MODIFIED] Ticket #{ticket} ({sym}) New SL: {final_sl} | TP: {final_tp}")
+                return {
+                    "status": "success",
+                    "ticket": ticket,
+                    "new_sl": final_sl,
+                    "new_tp": final_tp,
+                    "message": f"Successfully updated #{ticket} SL to {final_sl}"
+                }
+            else:
+                return {
+                    "status": "failed",
+                    "retcode": res.retcode if res else "None",
+                    "comment": res.comment if res else "Broker rejected SL/TP update"
+                }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     def close_position(self, ticket: int) -> Dict[str, Any]:
         """Closes a specific open position on Exness MT5 or 24/7 Cloud Gateway."""
         if self.cloud_gateway.is_configured():
@@ -470,6 +522,12 @@ def start_cloud_tunnel_daemon(bridge: ExnessBridge, cloud_url: str = "https://ai
                                     c.get("symbol", "XAUUSDm"),
                                     c.get("side", "BUY"),
                                     float(c.get("volume", 0.01)),
+                                    float(c.get("sl", 0.0)),
+                                    float(c.get("tp", 0.0))
+                                )
+                            elif action == "modify":
+                                bridge.modify_position_sl_tp(
+                                    int(c.get("ticket")),
                                     float(c.get("sl", 0.0)),
                                     float(c.get("tp", 0.0))
                                 )

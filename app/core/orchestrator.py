@@ -171,12 +171,29 @@ class MasterOrchestrator:
 
         self.multi_market_matrix = matrix
 
+        # Run AI Brain trade defense on open MT5 positions
+        self.evaluate_and_defend_positions()
+
         active_p = matrix["gold"]["price"] if any(t['symbol'] == 'XAUUSDm' for t in self.account.open_trades) else matrix["btc"]["price"]
         closed_trades = self.account.update_open_trades(active_p)
         for ct in closed_trades:
             self.log(f"🔔 TRADE SETTLED: {ct['id']} | Outcome: {ct['status']} | PnL: ${ct.get('realized_pnl', 0):+,.2f}")
             self.telegram.send_trade_close(ct, self.exness.balance)
             self.branding.generate_firm_content("BULLISH", f"${active_p:,.2f}", ct)
+
+    def evaluate_and_defend_positions(self):
+        """Active AI Brain position defense: Break-Even Shield (+$1.00) & Trailing Stop (+$2.50)."""
+        if not self.exness.open_positions:
+            return
+        actions = self.brain.evaluate_open_positions(self.exness.open_positions, self.multi_market_matrix)
+        for act in actions:
+            if act.get("action") == "modify_sl":
+                m_res = self.exness.modify_position_sl_tp(act["ticket"], act["new_sl"], act.get("new_tp", 0.0))
+                if m_res.get("status") in ("success", "queued"):
+                    self.send_agent_message("Marcus", "Risk Officer (PA_02)", act["reason"])
+                    self.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ DEFENSE TRIGGER: {act['symbol']} #{act['ticket']} protected.")
+                    self.telegram.send_message(f"🛡️ <b>AI POSITION DEFENSE:</b>\n{act['reason']}")
+                    self.log(f"🛡️ Position #{act['ticket']} ({act['symbol']}): {act['reason']}")
 
     def start_background_loop(self):
         if self.is_running:
@@ -195,18 +212,24 @@ class MasterOrchestrator:
             counter = 0
             while True:
                 try:
-                    self.run_simultaneous_scan()
+                    # Every 3 seconds: refresh balance & evaluate trade defenses (Break-Even & Trailing Stop)
+                    self.exness.refresh_balance()
+                    self.evaluate_and_defend_positions()
+
                     counter += 1
+                    # Full market scan every 15 seconds (every 5 cycles)
+                    if counter % 5 == 0:
+                        self.run_simultaneous_scan()
                     
-                    if counter % 8 == 0:
+                    if counter % 40 == 0:
                         gold_p = self.multi_market_matrix.get("gold", {}).get("price", 2748.20)
                         self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 Autonomous Audit: Market structure healthy. Gold support at $2,735.00 intact.")
-                    elif counter % 14 == 0:
+                    elif counter % 70 == 0:
                         self.brain.teach_agent("Mia", "Branding Strategy", "Prioritize short-form breakdown threads showing the 0.618 OTE entries.")
                         self.send_agent_message("Mia", "Viral Copywriter (PA_07)", "Lesson absorbed from AI Brain! Updating Twitter thread queue.")
 
                 except Exception as e:
                     self.log(f"Cycle Note: {str(e)}")
-                time.sleep(15)
+                time.sleep(3.0)
 
         threading.Thread(target=loop, daemon=True).start()
