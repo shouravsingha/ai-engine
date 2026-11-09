@@ -812,7 +812,7 @@ def index():
                 <span id="nav-open-count" style="background: #0f172a; border: 1px solid #334155; padding: 2px 7px; border-radius: 4px; color: #38bdf8; font-weight: 800; font-size: 10.5px;">0 Live Orders</span>
             </div>
 
-            <!-- Risk Mode & Emergency Kill Switch -->
+            <!-- Risk Mode -->
             <div class="nav-risk-box" style="display: flex; align-items: center; gap: 8px;">
                 <div style="background: #111726; border: 1px solid #1e293b; border-radius: 8px; padding: 4px 8px; display: flex; align-items: center; gap: 5px; font-size: 11px;">
                     <span style="color: #94a3b8; font-weight: 700;">Risk:</span>
@@ -820,20 +820,13 @@ def index():
                     <button onclick="setRisk('institutional')" id="risk-btn-inst" style="background: #0284c7; border: 1px solid #0284c7; color: #fff; border-radius: 4px; padding: 2px 5px; font-size: 10px; cursor: pointer; font-weight: 800;">1.0%</button>
                     <button onclick="setRisk('aggressive')" id="risk-btn-aggr" style="background: transparent; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; padding: 2px 5px; font-size: 10px; cursor: pointer;">2.0%</button>
                 </div>
-                <button onclick="panicFlatAll()" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #f87171; border-radius: 8px; padding: 5px 10px; font-weight: 800; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                    🚨 PANIC FLAT
-                </button>
             </div>
 
-            <!-- Controls (Cloud Bot + Sound + Sentinel Indicator) -->
+            <!-- Audio Toggle -->
             <div class="nav-toggles-box" style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
-                <button onclick="openCloudModal()" style="background: rgba(14, 165, 233, 0.15); border: 1px solid #0ea5e9; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                    ☁️ 24/7 Cloud Bot
-                </button>
-                <button id="sound-btn" onclick="toggleSound()" style="background: #111726; border: 1px solid #1e293b; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                <button id="sound-btn" onclick="toggleSound()" style="background: #111726; border: 1px solid #1e293b; color: #38bdf8; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
                     🔊 Audio: ON
                 </button>
-                <span style="color: #10b981; font-weight: 700; font-size: 11px; font-family: 'JetBrains Mono';">● @SingAiTradebot</span>
             </div>
         </header>
 
