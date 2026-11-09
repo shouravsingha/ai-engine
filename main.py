@@ -89,6 +89,37 @@ def save_webhooks(data: WebhookConfigInput):
 class RiskModeInput(BaseModel):
     mode: str  # "conservative", "institutional", "aggressive"
 
+class CloudConfigInput(BaseModel):
+    token: str
+    password: Optional[str] = ""
+    server: Optional[str] = "Exness-MT5Trial7"
+
+@app.post("/api/cloud/config")
+def save_cloud_config(data: CloudConfigInput):
+    orchestrator.exness.cloud_gateway.token = data.token.strip()
+    if data.password:
+        orchestrator.exness.cloud_gateway.password = data.password.strip()
+    if data.server:
+        orchestrator.exness.cloud_gateway.server = data.server.strip()
+    
+    sync_res = orchestrator.exness.cloud_gateway.sync_telemetry()
+    configured = orchestrator.exness.cloud_gateway.is_configured()
+    orchestrator.send_agent_message("Alex", "Chief Quant (PA_01)", f"☁️ 24/7 Cloud MetaAPI Gateway configured. Status: {'ACTIVE' if sync_res.get('status') == 'success' else 'STANDBY'}.")
+    return {"status": "success", "configured": configured, "cloud_sync": sync_res}
+
+@app.get("/api/cloud/status")
+def get_cloud_status():
+    gw = orchestrator.exness.cloud_gateway
+    return {
+        "configured": gw.is_configured(),
+        "account_id": gw.account_id,
+        "server": gw.server,
+        "has_token": bool(gw.token),
+        "has_password": bool(gw.password),
+        "connected": gw.connected,
+        "meta_account_id": gw.meta_account_id
+    }
+
 @app.post("/api/risk/mode")
 def set_risk_mode(data: RiskModeInput):
     mode = data.mode.lower()
@@ -790,8 +821,11 @@ def index():
                 </span>
             </div>
 
-            <!-- Sound & Voice Toggles + Exness Status -->
+            <!-- Sound & Voice Toggles + 24/7 Cloud Bot + Exness Status -->
             <div class="nav-toggles-box" style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+                <button onclick="openCloudModal()" style="background: rgba(14, 165, 233, 0.15); border: 1px solid #0ea5e9; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                    ☁️ 24/7 Cloud Bot
+                </button>
                 <button id="sound-btn" onclick="toggleSound()" style="background: #111726; border: 1px solid #1e293b; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
                     🔊 Audio: ON
                 </button>
@@ -954,6 +988,63 @@ def index():
                 <button onclick="executePopoverPair()" style="width: 100%; margin-top: 10px; padding: 10px; border-radius: 8px; border: none; background: #0284c7; color: #fff; font-weight: 800; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
                     ⚡ Execute Order on Exness MT5 (#434353249)
                 </button>
+            </div>
+        </div>
+
+        <!-- 24/7 CLOUD AUTONOMOUS TRADING SETTINGS MODAL -->
+        <div id="cloud-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); backdrop-filter:blur(8px); z-index:10000; align-items:center; justify-content:center; padding:16px;">
+            <div style="background:var(--of-card); border:1px solid var(--of-border-strong); border-radius:16px; max-width:500px; width:100%; padding:24px; box-shadow:0 25px 60px rgba(0,0,0,0.5); font-family:'Plus Jakarta Sans',sans-serif; color:var(--of-text-dark);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:22px;">☁️</span>
+                        <div>
+                            <h3 style="margin:0; font-size:16px; font-weight:800;">24/7 Cloud MT5 Autonomous Engine</h3>
+                            <small style="color:var(--of-text-muted); font-size:11px;">Runs on Render even when your laptop is turned OFF</small>
+                        </div>
+                    </div>
+                    <button onclick="closeCloudModal()" style="background:transparent; border:none; font-size:18px; cursor:pointer; color:var(--of-text-muted);">✕</button>
+                </div>
+
+                <div id="cloud-status-badge" style="background:rgba(14,165,233,0.1); border:1px solid rgba(14,165,233,0.3); border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>Cloud Gateway Status:</span>
+                    <strong id="cloud-status-text" style="color:#38bdf8;">Checking...</strong>
+                </div>
+
+                <div style="font-size:11.5px; color:var(--of-text-muted); margin-bottom:14px; line-height:1.5;">
+                    Connect your Exness account to MetaAPI Cloud Gateway. Once connected, Render executes trades directly on the broker's servers 24 hours a day, 7 days a week.
+                </div>
+
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-size:11px; font-weight:700; margin-bottom:4px; color:var(--of-text-muted);">EXNESS MT5 LOGIN ID</label>
+                    <input id="cloud-input-login" type="text" value="434353249" readonly style="width:100%; background:var(--of-card-subtle); border:1px solid var(--of-border); border-radius:8px; padding:8px 10px; font-family:'JetBrains Mono'; font-size:12px; color:var(--of-text-dark);">
+                </div>
+
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-size:11px; font-weight:700; margin-bottom:4px; color:var(--of-text-muted);">EXNESS SERVER</label>
+                    <input id="cloud-input-server" type="text" value="Exness-MT5Trial7" style="width:100%; background:var(--of-card-subtle); border:1px solid var(--of-border); border-radius:8px; padding:8px 10px; font-family:'JetBrains Mono'; font-size:12px; color:var(--of-text-dark);">
+                </div>
+
+                <div style="margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                        <label style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--of-text-muted);">METAAPI FREE CLOUD TOKEN</label>
+                        <a href="https://app.metaapi.cloud/token" target="_blank" style="font-size:10px; color:#38bdf8; text-decoration:none; font-weight:700;">Get Free Token ↗</a>
+                    </div>
+                    <input id="cloud-input-token" type="password" placeholder="Paste your MetaAPI token here" style="width:100%; background:var(--of-card-subtle); border:1px solid var(--of-border); border-radius:8px; padding:8px 10px; font-family:'JetBrains Mono'; font-size:12px; color:var(--of-text-dark);">
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <label style="display:block; font-size:11px; font-weight:700; margin-bottom:4px; color:var(--of-text-muted);">EXNESS TRADING PASSWORD</label>
+                    <input id="cloud-input-pass" type="password" placeholder="Exness MT5 account password" style="width:100%; background:var(--of-card-subtle); border:1px solid var(--of-border); border-radius:8px; padding:8px 10px; font-family:'JetBrains Mono'; font-size:12px; color:var(--of-text-dark);">
+                </div>
+
+                <div style="display:flex; gap:10px;">
+                    <button onclick="saveCloudConfig()" id="cloud-save-btn" style="flex:1; background:linear-gradient(135deg, #0284c7, #0369a1); border:none; color:#fff; border-radius:10px; padding:10px; font-weight:800; font-size:12.5px; cursor:pointer;">
+                        ⚡ Save & Arm 24/7 Cloud Trading
+                    </button>
+                    <button onclick="closeCloudModal()" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:var(--of-text-muted); border-radius:10px; padding:10px 14px; font-size:12px; cursor:pointer;">
+                        Cancel
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -1449,6 +1540,74 @@ def index():
 
             function closePopover() {
                 document.getElementById('floating-popover').style.display = 'none';
+            }
+
+            function openCloudModal() {
+                const modal = document.getElementById('cloud-modal');
+                if (modal) {
+                    modal.style.display = 'flex';
+                    loadCloudStatus();
+                }
+            }
+
+            function closeCloudModal() {
+                const modal = document.getElementById('cloud-modal');
+                if (modal) modal.style.display = 'none';
+            }
+
+            async function loadCloudStatus() {
+                try {
+                    const res = await fetch('/api/cloud/status');
+                    if (res.ok) {
+                        const d = await res.json();
+                        const txt = document.getElementById('cloud-status-text');
+                        if (txt) {
+                            if (d.configured) {
+                                txt.innerText = d.connected ? '● CONNECTED (24/7 ACTIVE)' : '● CONFIGURED (PROVISIONING)';
+                                txt.style.color = '#10b981';
+                            } else {
+                                txt.innerText = '○ NOT CONFIGURED (STANDBY)';
+                                txt.style.color = '#f59e0b';
+                            }
+                        }
+                    }
+                } catch(e) {}
+            }
+
+            async function saveCloudConfig() {
+                const token = document.getElementById('cloud-input-token').value.trim();
+                const pass = document.getElementById('cloud-input-pass').value.trim();
+                const server = document.getElementById('cloud-input-server').value.trim();
+                const btn = document.getElementById('cloud-save-btn');
+
+                if (!token) {
+                    alert('Please enter your MetaAPI Cloud Token (free from app.metaapi.cloud).');
+                    return;
+                }
+
+                btn.innerText = 'Connecting to MetaAPI Cloud...';
+                btn.disabled = true;
+
+                try {
+                    const res = await fetch('/api/cloud/config', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ token: token, password: pass, server: server })
+                    });
+                    const d = await res.json();
+                    if (d.status === 'success') {
+                        speakBrainMessage('24/7 Cloud MetaAPI Gateway armed successfully.');
+                        alert('✅ 24/7 Cloud Gateway Armed! The bot can now trade continuously on Render even when your laptop is turned off.');
+                        closeCloudModal();
+                    } else {
+                        alert('Could not configure cloud gateway: ' + JSON.stringify(d));
+                    }
+                } catch(e) {
+                    alert('Error saving cloud config: ' + e);
+                } finally {
+                    btn.innerText = '⚡ Save & Arm 24/7 Cloud Trading';
+                    btn.disabled = false;
+                }
             }
 
             function drawPopoverCandles(pair) {

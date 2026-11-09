@@ -5,6 +5,7 @@ or operates high-fidelity paper mirror synced with account #434353249.
 """
 from datetime import datetime
 from typing import Dict, Any, Optional
+from app.trading.cloud_mt5_gateway import CloudMT5Gateway
 
 try:
     import MetaTrader5 as mt5
@@ -39,6 +40,7 @@ class ExnessBridge:
             }
         ]
         self.last_remote_sync_ts = 0.0
+        self.cloud_gateway = CloudMT5Gateway()
         
         # Auto-initialize with detected Exness account
         self.try_initialize_mt5()
@@ -90,7 +92,20 @@ class ExnessBridge:
         return True
 
     def refresh_balance(self):
-        """Pulls latest tick balance, equity, margin, and live open positions from MT5."""
+        """Pulls latest tick balance, equity, margin, and live open positions from MT5 or Cloud Gateway."""
+        if self.cloud_gateway.is_configured():
+            res = self.cloud_gateway.sync_telemetry()
+            if res.get("status") == "success":
+                self.balance = self.cloud_gateway.balance
+                self.equity = self.cloud_gateway.equity
+                self.floating_pnl = self.cloud_gateway.floating_pnl
+                self.open_positions = self.cloud_gateway.open_positions
+                self.connected = True
+                self.live_terminal = True
+                self.status_message = f"24/7 CLOUD AUTONOMOUS (Account #{self.account_id} on {self.server})"
+                self.last_sync = self.cloud_gateway.last_sync
+                return
+
         if MT5_AVAILABLE:
             try:
                 mt5.initialize()
@@ -149,7 +164,19 @@ class ExnessBridge:
                 self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
 
     def execute_live_order(self, symbol: str, side: str, volume: float = 0.01, sl: float = 0.0, tp: float = 0.0) -> Dict[str, Any]:
-        """Executes a real order directly on the Exness MT5 terminal."""
+        """Executes a real order directly on the Exness MT5 terminal or 24/7 Cloud Gateway."""
+        if self.cloud_gateway.is_configured():
+            c_res = self.cloud_gateway.execute_live_order(symbol, side, volume, sl, tp)
+            if c_res.get("status") == "success":
+                return {
+                    "status": "success",
+                    "ticket": c_res.get("orderId"),
+                    "symbol": symbol,
+                    "side": side,
+                    "volume": volume,
+                    "message": f"24/7 Cloud Executed {side} {volume} {symbol} on Exness MT5"
+                }
+
         if not (MT5_AVAILABLE and self.live_terminal):
             return {"status": "paper", "ticket": f"EXN-MOCK-{int(datetime.now().timestamp())}", "message": "MT5 terminal not linked"}
 
@@ -216,7 +243,10 @@ class ExnessBridge:
             return {"status": "error", "message": str(e)}
 
     def close_position(self, ticket: int) -> Dict[str, Any]:
-        """Closes a specific open position on Exness MT5."""
+        """Closes a specific open position on Exness MT5 or 24/7 Cloud Gateway."""
+        if self.cloud_gateway.is_configured():
+            return self.cloud_gateway.close_position(ticket)
+
         if not (MT5_AVAILABLE and self.live_terminal):
             return {"status": "error", "message": "MT5 terminal not linked"}
 
@@ -262,7 +292,10 @@ class ExnessBridge:
             return {"status": "error", "message": str(e)}
 
     def close_all_positions(self) -> Dict[str, Any]:
-        """Emergency flattens all open positions on Exness MT5."""
+        """Emergency flattens all open positions on Exness MT5 or 24/7 Cloud Gateway."""
+        if self.cloud_gateway.is_configured():
+            return self.cloud_gateway.close_all_positions()
+
         if not (MT5_AVAILABLE and self.live_terminal):
             return {"status": "error", "message": "MT5 terminal not linked"}
 
