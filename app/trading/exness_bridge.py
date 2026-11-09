@@ -57,11 +57,15 @@ class ExnessBridge:
         """Attempts real connection to local MetaTrader 5 Exness terminal."""
         if MT5_AVAILABLE:
             try:
-                # 1. First try attaching to currently running MT5 instance
-                initialized = mt5.initialize()
+                # 1. First try attaching to currently running MT5 instance with short timeout
+                initialized = False
+                try:
+                    initialized = mt5.initialize(timeout=2500)
+                except Exception:
+                    pass
                 
                 # 2. If not initialized, try explicitly with path and login credentials
-                if not initialized:
+                if not initialized and hasattr(self, 'path') and self.path:
                     try:
                         acc_id_int = int(self.account_id)
                         initialized = mt5.initialize(
@@ -69,7 +73,7 @@ class ExnessBridge:
                             login=acc_id_int,
                             password=self.password,
                             server=self.server,
-                            timeout=15000
+                            timeout=3500
                         )
                     except Exception as e:
                         print(f"MT5 Explicit Init Note: {e}")
