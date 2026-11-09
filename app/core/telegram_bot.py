@@ -17,8 +17,8 @@ class TelegramSentinelBot:
         chat_id: str = "5347514050",
         command_handler: Optional[Callable[[str], str]] = None
     ):
-        # Telegram messages disabled per user instruction
-        self.enabled = os.environ.get("TELEGRAM_ENABLED", "false").lower() in ("true", "1", "yes")
+        # Telegram bot enabled as before
+        self.enabled = os.environ.get("TELEGRAM_ENABLED", "true").lower() in ("true", "1", "yes")
         self.token = token
         self.chat_id = chat_id
         self.command_handler = command_handler
