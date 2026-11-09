@@ -59,21 +59,27 @@ class ExnessBridge:
 
     def refresh_balance(self):
         """Pulls latest tick balance, equity, margin, and live open positions from MT5."""
-        if MT5_AVAILABLE and self.live_terminal:
+        if MT5_AVAILABLE:
             try:
+                mt5.initialize()
                 acc_info = mt5.account_info()
                 if acc_info:
-                    self.balance = float(acc_info.balance)
-                    self.equity = float(acc_info.equity)
+                    self.account_id = str(acc_info.login)
+                    self.server = acc_info.server
+                    self.balance = round(float(acc_info.balance), 2)
+                    self.equity = round(float(acc_info.equity), 2)
                     self.currency = acc_info.currency
                     self.leverage = f"1:{acc_info.leverage}"
+                    self.connected = True
+                    self.live_terminal = True
                     self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+                    self.status_message = f"LIVE MT5 CONNECTED (Account #{self.account_id} on {self.server})"
 
                 # Get open MT5 positions
                 positions = mt5.positions_get()
                 self.open_positions = []
                 total_profit = 0.0
-                if positions:
+                if positions is not None:
                     for p in positions:
                         side = "BUY" if p.type == 0 else "SELL"
                         self.open_positions.append({

@@ -510,20 +510,23 @@ def index():
                     </div>
                 </div>
 
-                <!-- Subheader Status Line with Detailed Exness Account Metrics -->
+                <!-- Subheader Status Line with Live Updating Exness Metrics -->
                 <div class="of-subhead" id="subhead-exness-detail">
-                    <div>
-                        <span style="color: #10b981; font-weight: 800;">● EXNESS MT5 LIVE:</span>
-                        <b>#434353249</b> on <b>Exness-MT5Trial7</b> &nbsp;·&nbsp;
-                        Balance: <strong style="color: var(--of-green-line); font-size: 12px;" id="subhead-bal">$20.21 USD</strong> &nbsp;·&nbsp;
-                        Equity: <strong id="subhead-eq">$20.21 USD</strong> &nbsp;·&nbsp;
-                        <strong style="color: var(--of-green);">12 up</strong> · 
-                        <span>8 flat</span> · 
-                        <strong style="color: var(--of-red);">10 down</strong>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: #10b981; font-weight: 800;">● EXNESS MT5 LIVE (#434353249):</span>
+                        <span>Balance: <strong style="color: var(--of-blue); font-size: 12px;" id="subhead-bal">$20.21 USD</strong></span>
+                        <span>Equity: <strong id="subhead-eq" style="color: var(--of-green-line); font-size: 12px;">$20.33 USD</strong></span>
+                        <span>PnL: <strong id="subhead-pnl" style="color: #10b981; font-size: 12px;">+$0.12 USD</strong></span>
+                        <span style="color: var(--of-text-muted);">| 12 up · 8 flat · 10 down</span>
                     </div>
-                    <div style="display: flex; gap: 14px;">
-                        <span><b style="color: var(--of-green);">▲ Bullish 12</b> &nbsp; <b style="color: var(--of-red);">▼ Bearish 10</b></span>
-                        <span>Active Exness Deal: <b style="color: var(--of-blue);" id="subhead-deal">EURUSDm (BUY 0.01 Lot) Ticket #5012444923</b></span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span id="subhead-deal" style="background: var(--of-card); border: 1px solid var(--of-border); padding: 3px 8px; border-radius: 6px; font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--of-blue); display: flex; align-items: center; gap: 6px;">
+                            Active: EURUSDm BUY 0.01 (#5012444923)
+                            <button onclick="closeTrade(5012444923)" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444; border-radius: 4px; padding: 1px 5px; font-size: 9px; cursor: pointer;">✕ Close</button>
+                        </span>
+                        <button onclick="quickOpenTrade('XAUUSDm', 'BUY')" style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: #f59e0b; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 10px; cursor: pointer;">
+                            ⚡ Quick Buy Gold
+                        </button>
                     </div>
                 </div>
 
@@ -631,81 +634,6 @@ def index():
                 <button onclick="executePopoverPair()" style="width: 100%; margin-top: 10px; padding: 10px; border-radius: 8px; border: none; background: #0284c7; color: #fff; font-weight: 800; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
                     ⚡ Execute Order on Exness MT5 (#434353249)
                 </button>
-            </div>
-
-            <!-- LIVE EXNESS MT5 ACCOUNT TERMINAL & ACTIVE POSITIONS TABLE (PROMINENT AT BOTTOM) -->
-            <div class="exness-terminal-card" style="margin-top: 18px; background: var(--of-card); border: 1px solid var(--of-border-strong); border-radius: 16px; padding: 18px 22px; box-shadow: var(--of-shadow); color: var(--of-text-dark);">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--of-border); padding-bottom: 14px; margin-bottom: 14px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981; animation: pulseRed 1.5s infinite;"></span>
-                        <strong style="font-size: 15px;">EXNESS MetaTrader 5 Terminal Live</strong>
-                        <span style="background: rgba(16, 185, 129, 0.15); color: var(--of-green-line); border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 800;">ACCOUNT #434353249 (Exness-MT5Trial7)</span>
-                        <span style="background: var(--of-card-subtle); border: 1px solid var(--of-border); padding: 2px 8px; border-radius: 6px; font-size: 11px; color: var(--of-text-muted);">Leverage 1:2000</span>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button onclick="quickOpenTrade('XAUUSDm', 'BUY')" style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: #f59e0b; padding: 6px 12px; border-radius: 8px; font-weight: 800; font-size: 11px; cursor: pointer;">
-                            ⚡ Quick Buy Gold (XAUUSDm) 0.01
-                        </button>
-                        <button onclick="quickOpenTrade('EURUSDm', 'BUY')" style="background: rgba(2,132,199,0.15); border: 1px solid rgba(2,132,199,0.4); color: #38bdf8; padding: 6px 12px; border-radius: 8px; font-weight: 800; font-size: 11px; cursor: pointer;">
-                            ⚡ Quick Buy EURUSDm 0.01
-                        </button>
-                        <button onclick="panicFlatAll()" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #f87171; padding: 6px 12px; border-radius: 8px; font-weight: 800; font-size: 11px; cursor: pointer;">
-                            🚨 Close All MT5 Positions
-                        </button>
-                    </div>
-                </div>
-
-                <!-- 4 Metrics Cards -->
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px;">
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 12px;">
-                        <small style="color: var(--of-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase;">Exness Balance</small>
-                        <div id="panel-exness-balance" style="font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono'; color: var(--of-blue); margin-top: 4px;">$20.21 USD</div>
-                    </div>
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 12px;">
-                        <small style="color: var(--of-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase;">Live Equity</small>
-                        <div id="panel-exness-equity" style="font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono'; color: var(--of-green-line); margin-top: 4px;">$20.26 USD</div>
-                    </div>
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 12px;">
-                        <small style="color: var(--of-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase;">Net Floating Profit/Loss</small>
-                        <div id="panel-exness-pnl" style="font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono'; color: #facc15; margin-top: 4px;">+$0.05 USD</div>
-                    </div>
-                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 12px;">
-                        <small style="color: var(--of-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase;">Free Margin Available</small>
-                        <div id="panel-exness-margin" style="font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono'; color: var(--of-text-dark); margin-top: 4px;">$19.70 USD</div>
-                    </div>
-                </div>
-
-                <!-- Open Positions Table -->
-                <div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <span style="font-size: 12.5px; font-weight: 800; text-transform: uppercase; color: var(--of-text-muted);">
-                            Active Open Positions on Exness MT5 (<span id="panel-open-count" style="color:var(--of-blue); font-weight:800;">1</span>)
-                        </span>
-                        <span style="font-size: 11px; color: var(--of-text-muted); font-family: 'JetBrains Mono';">Live Tick Sync: Real-Time</span>
-                    </div>
-
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono'; font-size: 11.5px; text-align: left;">
-                            <thead>
-                                <tr style="background: var(--of-card-subtle); border-bottom: 1px solid var(--of-border); color: var(--of-text-muted); font-size: 10.5px;">
-                                    <th style="padding: 8px 10px;">TICKET</th>
-                                    <th style="padding: 8px 10px;">SYMBOL</th>
-                                    <th style="padding: 8px 10px;">TYPE</th>
-                                    <th style="padding: 8px 10px;">VOLUME</th>
-                                    <th style="padding: 8px 10px;">OPEN PRICE</th>
-                                    <th style="padding: 8px 10px;">CURRENT PRICE</th>
-                                    <th style="padding: 8px 10px;">S / L</th>
-                                    <th style="padding: 8px 10px;">T / P</th>
-                                    <th style="padding: 8px 10px;">PROFIT (USD)</th>
-                                    <th style="padding: 8px 10px; text-align: right;">ACTION</th>
-                                </tr>
-                            </thead>
-                            <tbody id="open-positions-tbody">
-                                <!-- Populated dynamically by syncData() -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
             </div>
         </div>
 
