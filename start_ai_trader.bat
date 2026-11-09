@@ -1,7 +1,7 @@
 @echo off
 title TradingAI 24/7 Exness Engine
 echo ============================================================
-echo   TradingAI 24/7 Autonomous Exness Engine & Cloud Bridge
+echo   TradingAI 24/7 Autonomous Exness Engine ^& Cloud Bridge
 echo   Account: #434353249 on Exness-MT5Trial7
 echo   Cloud Web: https://ai-engine-6bpy.onrender.com/
 echo ============================================================
@@ -13,9 +13,9 @@ if exist "C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe" (
 )
 
 echo Waiting for MT5 Terminal to connect to Exness broker...
-timeout /t 5 /nobreak >nul
+ping 127.0.0.1 -n 6 >nul
 
-echo [2/2] Launching AI Engine, OrderFlow Matrix & Cloud Tunnel...
+echo [2/2] Launching AI Engine, OrderFlow Matrix ^& Cloud Tunnel...
 cd /d "C:\Users\HP\ai-engine"
 python -m uvicorn main:app --host 0.0.0.0 --port 8000
 pause
