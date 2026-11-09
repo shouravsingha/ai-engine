@@ -781,47 +781,51 @@ def index():
     <body class="theme-light">
         <!-- TOP APP BAR -->
         <header class="top-nav-bar">
+            <!-- Brand & Live Market Session with Real-Time Clock -->
             <div class="brand-flow">
-                <span class="dot-flow"></span>
-                <span>• OrderFlow <span class="of-flow-serif" style="color: #38bdf8;">by TradingAI</span></span>
-                <span class="nav-badge-hide-mobile" style="background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">FOREX & COMMODITIES</span>
-                <span class="nav-badge-hide-mobile" style="background: rgba(236,72,153,0.15); color: #ec4899; border: 1px solid rgba(236,72,153,0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">🧠 AI CENTRAL BRAIN ACTIVE</span>
+                <span class="dot-flow" style="background: #10b981; box-shadow: 0 0 10px #10b981;"></span>
+                <span style="font-weight: 900; font-size: 14px; letter-spacing: 0.5px; color: #f8fafc;">ALGO<span style="color: #38bdf8;">CORE</span></span>
+                
+                <div class="nav-session-widget" style="background: #111726; border: 1px solid #1e293b; border-radius: 8px; padding: 4px 10px; display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono'; font-size: 11px;">
+                    <span id="nav-market-session" style="font-weight: 800; color: #38bdf8;">● MARKET ACTIVE</span>
+                    <span style="color: #334155;">|</span>
+                    <span id="nav-utc-clock" style="color: #94a3b8; font-weight: 700;">00:00:00 UTC</span>
+                </div>
             </div>
 
-            <!-- View Switcher -->
+            <!-- Clean View Switcher -->
             <div class="tab-switch">
-                <button class="tab-btn active" onclick="switchView('orderflow')">🌊 OrderFlow Matrix (Exact Video Match)</button>
-                <button class="tab-btn" onclick="switchView('3d')">🏢 3D Robot Floor (with AI Brain)</button>
+                <button class="tab-btn active" onclick="switchView('orderflow')">🌊 OrderFlow Matrix</button>
+                <button class="tab-btn" onclick="switchView('3d')">🏢 3D Office Floor</button>
+            </div>
+
+            <!-- PROMINENT LIVE EXNESS MT5 ACCOUNT WIDGET (Single Compact Institutional Badge) -->
+            <div class="nav-exness-card" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 8px; padding: 5px 12px; display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono'; font-size: 11px;">
+                <span style="color: #10b981; font-weight: 800; display: flex; align-items: center; gap: 5px;">
+                    <span style="width: 7px; height: 7px; border-radius: 50%; background: #10b981; animation: pulseRed 1.5s infinite;"></span>
+                    MT5 #434353249
+                </span>
+                <span style="color: #334155;">|</span>
+                <span>Bal: <strong id="nav-exness-balance" style="color: #38bdf8; font-weight: 800;">$20.21 USD</strong></span>
+                <span>Eq: <strong id="nav-exness-equity" style="color: #10b981; font-weight: 800;">$20.21</strong></span>
+                <span>PnL: <strong id="nav-exness-pnl" style="color: #facc15; font-weight: 800;">+$0.00</strong></span>
+                <span id="nav-open-count" style="background: #0f172a; border: 1px solid #334155; padding: 2px 7px; border-radius: 4px; color: #38bdf8; font-weight: 800; font-size: 10.5px;">0 Live Orders</span>
             </div>
 
             <!-- Risk Mode & Emergency Kill Switch -->
             <div class="nav-risk-box" style="display: flex; align-items: center; gap: 8px;">
-                <div style="background: #111726; border: 1px solid #1e293b; border-radius: 8px; padding: 4px 8px; display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                <div style="background: #111726; border: 1px solid #1e293b; border-radius: 8px; padding: 4px 8px; display: flex; align-items: center; gap: 5px; font-size: 11px;">
                     <span style="color: #94a3b8; font-weight: 700;">Risk:</span>
-                    <button onclick="setRisk('conservative')" id="risk-btn-cons" style="background: transparent; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer;">0.5%</button>
-                    <button onclick="setRisk('institutional')" id="risk-btn-inst" style="background: #0284c7; border: 1px solid #0284c7; color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer; font-weight: 800;">1.0%</button>
-                    <button onclick="setRisk('aggressive')" id="risk-btn-aggr" style="background: transparent; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer;">2.0%</button>
+                    <button onclick="setRisk('conservative')" id="risk-btn-cons" style="background: transparent; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; padding: 2px 5px; font-size: 10px; cursor: pointer;">0.5%</button>
+                    <button onclick="setRisk('institutional')" id="risk-btn-inst" style="background: #0284c7; border: 1px solid #0284c7; color: #fff; border-radius: 4px; padding: 2px 5px; font-size: 10px; cursor: pointer; font-weight: 800;">1.0%</button>
+                    <button onclick="setRisk('aggressive')" id="risk-btn-aggr" style="background: transparent; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; padding: 2px 5px; font-size: 10px; cursor: pointer;">2.0%</button>
                 </div>
-                <button onclick="panicFlatAll()" style="background: rgba(239,68,68,0.18); border: 1px solid #ef4444; color: #f87171; border-radius: 8px; padding: 6px 12px; font-weight: 800; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                    🚨 PANIC FLAT ALL
+                <button onclick="panicFlatAll()" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #f87171; border-radius: 8px; padding: 5px 10px; font-weight: 800; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    🚨 PANIC FLAT
                 </button>
             </div>
 
-            <!-- PROMINENT LIVE EXNESS MT5 ACCOUNT WIDGET (FRONT & CENTER) -->
-            <div class="nav-exness-card" style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 10px; padding: 5px 14px; display: flex; align-items: center; gap: 14px; font-family: 'JetBrains Mono'; font-size: 11.5px;">
-                <span style="color: #10b981; font-weight: 800; display: flex; align-items: center; gap: 5px;">
-                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulseRed 1.5s infinite;"></span>
-                    EXNESS MT5: #434353249
-                </span>
-                <span>Balance: <strong id="nav-exness-balance" style="color: #38bdf8; font-weight: 800; font-size: 13px;">$20.21 USD</strong></span>
-                <span>Equity: <strong id="nav-exness-equity" style="color: #10b981; font-weight: 800;">$20.21</strong></span>
-                <span>PnL: <strong id="nav-exness-pnl" style="color: #facc15;">+$0.00</strong></span>
-                <span style="background: #0f172a; border: 1px solid #334155; padding: 2px 8px; border-radius: 4px; font-size: 10.5px;">
-                    <span id="nav-open-count" style="color: #38bdf8; font-weight: 800;">0 Live Orders</span>
-                </span>
-            </div>
-
-            <!-- Sound & Voice Toggles + 24/7 Cloud Bot + Exness Status -->
+            <!-- Controls (Cloud Bot + Sound + Sentinel Indicator) -->
             <div class="nav-toggles-box" style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
                 <button onclick="openCloudModal()" style="background: rgba(14, 165, 233, 0.15); border: 1px solid #0ea5e9; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                     ☁️ 24/7 Cloud Bot
@@ -829,10 +833,7 @@ def index():
                 <button id="sound-btn" onclick="toggleSound()" style="background: #111726; border: 1px solid #1e293b; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
                     🔊 Audio: ON
                 </button>
-                <button id="voice-btn" onclick="toggleVoice()" style="background: #111726; border: 1px solid #1e293b; color: #ec4899; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
-                    🗣️ Brain Voice: ON
-                </button>
-                <span style="color: #10b981; font-weight: 700; font-size: 11px;">● @SingAiTradebot</span>
+                <span style="color: #10b981; font-weight: 700; font-size: 11px; font-family: 'JetBrains Mono';">● @SingAiTradebot</span>
             </div>
         </header>
 
@@ -848,9 +849,8 @@ def index():
                     </div>
 
                     <div class="of-title-center">
-                        <span style="color: #ef4444; font-size: 10px;">●</span>
-                        <span>Order<span class="of-flow-serif" style="color: #991b1b;">Flow</span></span>
-                        <span style="font-size: 12px; font-weight: 400; color: var(--of-text-muted);">by TradingAI</span>
+                        <span style="color: #10b981; font-size: 8px; animation: pulseRed 1.5s infinite;">●</span>
+                        <span style="font-weight: 800; font-size: 13.5px; letter-spacing: 0.3px; color: var(--of-text-dark);">Institutional OrderFlow Matrix</span>
                     </div>
 
                     <div class="of-head-controls">
@@ -864,14 +864,11 @@ def index():
                     </div>
                 </div>
 
-                <!-- Subheader Status Line with Live Updating Exness Metrics -->
+                <!-- Subheader Status Line without duplicate clutter -->
                 <div class="of-subhead" id="subhead-exness-detail">
                     <div class="subhead-row-1" style="display: flex; align-items: center; gap: 8px;">
-                        <span id="subhead-status-badge" style="color: #10b981; font-weight: 800;">● EXNESS MT5 LIVE (#434353249):</span>
-                        <span>Balance: <strong style="color: var(--of-blue); font-size: 12px;" id="subhead-bal">$20.21 USD</strong></span>
-                        <span>Equity: <strong id="subhead-eq" style="color: var(--of-green-line); font-size: 12px;">$20.21 USD</strong></span>
-                        <span>PnL: <strong id="subhead-pnl" style="color: #10b981; font-size: 12px;">+$0.00 USD</strong></span>
-                        <span style="color: var(--of-text-muted);">| 12 up · 8 flat · 10 down</span>
+                        <span id="subhead-status-badge" style="color: #10b981; font-weight: 800;">● EXNESS MT5 LIVE:</span>
+                        <span style="color: var(--of-text-muted);">Institutional Liquidity Absorption | 12 up · 8 flat · 10 down</span>
                     </div>
                     <div class="subhead-row-2" style="display: flex; align-items: center; gap: 8px;">
                         <span id="subhead-deal" style="background: var(--of-card); border: 1px solid var(--of-border); padding: 3px 8px; border-radius: 6px; font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--of-blue); display: flex; align-items: center; gap: 6px;">
@@ -1127,6 +1124,9 @@ def index():
             }
 
             function speakBrainMessage(msg) {
+                if (typeof brainSpeechActivity !== 'undefined') {
+                    brainSpeechActivity = 1.0;
+                }
                 if (!voiceEnabled || !window.speechSynthesis) return;
                 try {
                     window.speechSynthesis.cancel();
@@ -1825,7 +1825,10 @@ def index():
 
             // 3D Engine with AI Central Neural Brain & 7 Seated Robot Employees
             let scene, camera, renderer, controls;
-            let brainCoreMesh, neuralRings = [], laserBeams = [];
+            let brainGroup, brainParticlesMesh, brainParticlesGeo;
+            let brainBasePos, brainPhaseOffsets, brainParticleCount = 3800;
+            let neuralRings = [], laserBeams = [];
+            let brainSpeechActivity = 0.0;
 
             function init3D() {
                 const cont = document.getElementById('canvas-3d-wrap');
@@ -1859,7 +1862,7 @@ def index():
                 const r3 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 44), fenceMat); r3.position.set(-27, 1.2, 0); scene.add(r3);
                 const r4 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 44), fenceMat); r4.position.set(27, 1.2, 0); scene.add(r4);
 
-                // 🧠 AI CENTRAL NEURAL BRAIN (Floating in Center of Office)
+                // 🧠 AI CENTRAL HUMAN BRAIN NANO-PARTICLE SYSTEM (Floating in Center of Office)
                 createCentralAIBrain(0, 7.5, 0);
 
                 // 7 Robot Pods with swivel chairs, monitors, and overhead floating badges
@@ -1887,19 +1890,69 @@ def index():
                     requestAnimationFrame(loop);
                     controls.update();
 
-                    if (brainCoreMesh) {
-                        brainCoreMesh.rotation.y += 0.015;
-                        brainCoreMesh.rotation.x += 0.008;
-                        neuralRings.forEach((r, idx) => {
-                            r.rotation.x += 0.02 * (idx + 1);
-                            r.rotation.y += 0.015 * (idx + 1);
-                        });
+                    const t = Date.now() * 0.003;
+
+                    if (brainGroup) {
+                        brainGroup.rotation.y += 0.007;
+                        brainGroup.position.y = 7.5 + Math.sin(t * 1.5) * 0.22;
                     }
 
-                    const t = Date.now() * 0.003;
+                    neuralRings.forEach((r, idx) => {
+                        r.rotation.x += 0.016 * (idx + 1);
+                        r.rotation.z += 0.012 * (idx + 1);
+                    });
+
                     laserBeams.forEach((beam, idx) => {
                         beam.material.opacity = 0.25 + Math.sin(t + idx) * 0.2;
                     });
+
+                    // 🧬 RHYTHMIC WAVE & BEAT MOTION FOR NANO-PARTICLE HUMAN BRAIN
+                    if (brainParticlesGeo && brainBasePos) {
+                        const posAttr = brainParticlesGeo.attributes.position;
+                        const colAttr = brainParticlesGeo.attributes.color;
+                        const pArr = posAttr.array;
+                        const cArr = colAttr.array;
+
+                        // Rhythmic beat pulse
+                        const heartbeat = (Math.sin(t * 3.8) * 0.07 + Math.sin(t * 7.6) * 0.035);
+                        const speechBoost = (typeof brainSpeechActivity !== 'undefined' ? brainSpeechActivity : 0.0);
+                        const waveTravel = t * 4.6;
+
+                        for (let i = 0; i < brainParticleCount; i++) {
+                            const i3 = i * 3;
+                            const bx = brainBasePos[i3];
+                            const by = brainBasePos[i3 + 1];
+                            const bz = brainBasePos[i3 + 2];
+                            const phase = brainPhaseOffsets[i];
+
+                            // Synaptic traveling wave across cerebral hemispheres
+                            const wave = Math.sin(bz * 1.8 + by * 1.4 - waveTravel + phase * 0.3) * (0.08 + speechBoost * 0.14);
+
+                            // High-frequency nano-particle vibration
+                            const jitX = Math.sin(t * 5.5 + phase) * 0.022;
+                            const jitY = Math.cos(t * 5.0 + phase) * 0.022;
+                            const jitZ = Math.sin(t * 6.5 + phase) * 0.022;
+
+                            // Dynamic expansion on beat + speech wave
+                            const expansion = 1.0 + heartbeat + wave + (speechBoost * 0.08);
+
+                            pArr[i3]     = bx * expansion + jitX;
+                            pArr[i3 + 1] = by * expansion + jitY;
+                            pArr[i3 + 2] = bz * expansion + jitZ;
+
+                            // Synaptic flash brightening on pulse wave peaks
+                            if (wave > 0.05 || speechBoost > 0.3) {
+                                cArr[i3]     = Math.min(1.0, cArr[i3] + 0.12);
+                                cArr[i3 + 1] = Math.min(1.0, cArr[i3 + 1] + 0.12);
+                                cArr[i3 + 2] = Math.min(1.0, cArr[i3 + 2] + 0.12);
+                            }
+                        }
+                        posAttr.needsUpdate = true;
+                    }
+
+                    if (typeof brainSpeechActivity !== 'undefined' && brainSpeechActivity > 0) {
+                        brainSpeechActivity = Math.max(0, brainSpeechActivity - 0.02);
+                    }
 
                     renderer.render(scene, camera);
                 }
@@ -1907,34 +1960,161 @@ def index():
             }
 
             function createCentralAIBrain(x, y, z) {
-                const brainGroup = new THREE.Group();
+                brainGroup = new THREE.Group();
                 brainGroup.position.set(x, y, z);
 
-                const coreGeo = new THREE.IcosahedronGeometry(1.8, 2);
-                const coreMat = new THREE.MeshStandardMaterial({
-                    color: 0xec4899,
-                    emissive: 0xec4899,
-                    emissiveIntensity: 0.8,
-                    wireframe: true
+                // Procedural Human Brain Particle System (Left & Right Hemispheres, Gyri/Sulci Folds)
+                brainParticleCount = 3800;
+                const positions = new Float32Array(brainParticleCount * 3);
+                brainBasePos = new Float32Array(brainParticleCount * 3);
+                const colors = new Float32Array(brainParticleCount * 3);
+                brainPhaseOffsets = new Float32Array(brainParticleCount);
+
+                let idx = 0;
+                for (let i = 0; i < brainParticleCount; i++) {
+                    // Symmetrical hemispheres: right (+1) and left (-1)
+                    const side = (i % 2 === 0) ? 1.0 : -1.0;
+
+                    const theta = Math.acos(2 * Math.random() - 1); // 0 to PI
+                    const phi = Math.random() * Math.PI;            // 0 to PI
+
+                    // Base human brain proportions
+                    let bx = 1.35 * Math.sin(theta) * Math.cos(phi);
+                    let by = 1.25 * Math.cos(theta);
+                    let bz = 1.80 * Math.sin(theta) * Math.sin(phi);
+
+                    // Longitudinal cerebral fissure (separation between left & right hemispheres)
+                    bx = side * (Math.abs(bx) * 0.90 + 0.22);
+
+                    // Anatomical shaping:
+                    // 1. Frontal lobe expansion (z > 0)
+                    if (bz > 0) {
+                        by *= (1.0 + bz * 0.12);
+                        bx *= (1.0 + bz * 0.08);
+                    }
+                    // 2. Occipital slope down (z < 0)
+                    if (bz < 0) {
+                        by *= (1.0 + bz * 0.15);
+                    }
+                    // 3. Temporal lobe lateral bulging (lower sides)
+                    if (by < 0.1 && bz > -0.6 && bz < 0.7) {
+                        bx += side * 0.35 * Math.sin((bz + 0.6) * 2.2);
+                        by -= 0.15;
+                    }
+                    // 4. Cerebellum tucked below rear occipital lobe
+                    if (bz < -0.4 && by < -0.2) {
+                        bx *= 0.82;
+                        by -= 0.25;
+                        bz -= 0.15;
+                    }
+
+                    // 5. Gyri & Sulci: Organic cerebral folds & wrinkles
+                    const fold1 = Math.sin(bx * 4.2) * Math.cos(by * 4.2) * Math.sin(bz * 4.2) * 0.14;
+                    const fold2 = Math.sin(bx * 8.5 + bz * 7.0) * Math.cos(by * 6.5) * 0.07;
+                    const totalFold = fold1 + fold2;
+
+                    // Cortex thickness distribution
+                    const depth = 0.88 + Math.pow(Math.random(), 2) * 0.18;
+                    let px = (bx + totalFold) * depth * 1.25;
+                    let py = (by + totalFold) * depth * 1.25;
+                    let pz = (bz + totalFold) * depth * 1.25;
+
+                    positions[idx]     = px;
+                    positions[idx + 1] = py;
+                    positions[idx + 2] = pz;
+
+                    brainBasePos[idx]     = px;
+                    brainBasePos[idx + 1] = py;
+                    brainBasePos[idx + 2] = pz;
+
+                    // Nano-particle colors: Cyan, Neon Pink, Deep Violet, and Golden synaptic flashes
+                    const randCol = Math.random();
+                    if (randCol < 0.10) {
+                        // Golden synaptic flash
+                        colors[idx]     = 1.0;
+                        colors[idx + 1] = 0.85;
+                        colors[idx + 2] = 0.25;
+                    } else if (randCol < 0.55) {
+                        // Electric Cyan
+                        colors[idx]     = 0.22;
+                        colors[idx + 1] = 0.74;
+                        colors[idx + 2] = 0.98;
+                    } else if (randCol < 0.92) {
+                        // Glowing Magenta / Pink
+                        colors[idx]     = 0.92;
+                        colors[idx + 1] = 0.28;
+                        colors[idx + 2] = 0.62;
+                    } else {
+                        // Pure white neural impulse
+                        colors[idx]     = 1.0;
+                        colors[idx + 1] = 1.0;
+                        colors[idx + 2] = 1.0;
+                    }
+
+                    brainPhaseOffsets[i] = Math.random() * Math.PI * 2;
+                    idx += 3;
+                }
+
+                brainParticlesGeo = new THREE.BufferGeometry();
+                brainParticlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                brainParticlesGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                // Glowing circular soft particle texture
+                const pCanvas = document.createElement('canvas');
+                pCanvas.width = 64; pCanvas.height = 64;
+                const pCtx = pCanvas.getContext('2d');
+                const pGrad = pCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+                pGrad.addColorStop(0.0, 'rgba(255, 255, 255, 1)');
+                pGrad.addColorStop(0.25, 'rgba(56, 189, 248, 0.9)');
+                pGrad.addColorStop(0.55, 'rgba(236, 72, 153, 0.45)');
+                pGrad.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
+                pCtx.fillStyle = pGrad;
+                pCtx.fillRect(0, 0, 64, 64);
+                const pTex = new THREE.CanvasTexture(pCanvas);
+
+                const brainMat = new THREE.PointsMaterial({
+                    size: 0.22,
+                    map: pTex,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.95,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
                 });
-                brainCoreMesh = new THREE.Mesh(coreGeo, coreMat);
-                brainGroup.add(brainCoreMesh);
 
-                const innerGeo = new THREE.SphereGeometry(1.1, 16, 16);
-                const innerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-                const inner = new THREE.Mesh(innerGeo, innerMat);
-                brainGroup.add(inner);
+                brainParticlesMesh = new THREE.Points(brainParticlesGeo, brainMat);
+                brainGroup.add(brainParticlesMesh);
 
+                // Inner core lights
+                const pLight1 = new THREE.PointLight(0x38bdf8, 2.8, 14);
+                brainGroup.add(pLight1);
+                const pLight2 = new THREE.PointLight(0xec4899, 2.4, 14);
+                brainGroup.add(pLight2);
+
+                // Soft inner translucent wireframe nucleus
+                const innerGeo = new THREE.SphereGeometry(1.2, 16, 16);
+                const innerMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.12, wireframe: true });
+                const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+                brainGroup.add(innerMesh);
+
+                // 3 Orbital holographic rings
                 for (let i = 0; i < 3; i++) {
-                    const ringGeo = new THREE.TorusGeometry(2.6 + (i * 0.4), 0.04, 8, 48);
-                    const ringMat = new THREE.MeshBasicMaterial({ color: i === 0 ? 0x38bdf8 : (i === 1 ? 0x10b981 : 0xec4899) });
+                    const ringGeo = new THREE.TorusGeometry(3.0 + (i * 0.45), 0.035, 8, 48);
+                    const ringMat = new THREE.MeshBasicMaterial({
+                        color: i === 0 ? 0x38bdf8 : (i === 1 ? 0x10b981 : 0xec4899),
+                        transparent: true,
+                        opacity: 0.75
+                    });
                     const ring = new THREE.Mesh(ringGeo, ringMat);
+                    ring.rotation.x = (i + 1) * 0.45;
+                    ring.rotation.y = (i + 1) * 0.35;
                     neuralRings.push(ring);
                     brainGroup.add(ring);
                 }
 
-                const beamGeo = new THREE.CylinderGeometry(0.1, 1.8, 7.5, 16);
-                const beamMat = new THREE.MeshBasicMaterial({ color: 0xec4899, transparent: true, opacity: 0.25 });
+                // Pedestal Light Beam to floor
+                const beamGeo = new THREE.CylinderGeometry(0.08, 2.2, 7.5, 16);
+                const beamMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.20 });
                 const beam = new THREE.Mesh(beamGeo, beamMat);
                 beam.position.y = -3.75;
                 brainGroup.add(beam);
@@ -2001,12 +2181,50 @@ def index():
                 else if(view === 'wall') { camera.position.set(0, 10, 8); controls.target.set(0, 8.5, -21.8); }
             }
 
+            function updateMarketSessionClock() {
+                const now = new Date();
+                const utcHours = now.getUTCHours();
+                const utcMinutes = now.getUTCMinutes();
+                const utcSecs = now.getUTCSeconds();
+                const timeStr = `${String(utcHours).padStart(2, '0')}:${String(utcMinutes).padStart(2, '0')}:${String(utcSecs).padStart(2, '0')} UTC`;
+
+                let sessionName = "MARKET ACTIVE";
+                let sessionColor = "#10b981";
+
+                if (utcHours >= 13 && utcHours < 17) {
+                    sessionName = "LONDON / NY OVERLAP";
+                    sessionColor = "#38bdf8";
+                } else if (utcHours >= 8 && utcHours < 13) {
+                    sessionName = "LONDON SESSION";
+                    sessionColor = "#a855f7";
+                } else if (utcHours >= 17 && utcHours < 22) {
+                    sessionName = "NEW YORK SESSION";
+                    sessionColor = "#f59e0b";
+                } else if (utcHours >= 0 && utcHours < 8) {
+                    sessionName = "TOKYO / ASIAN SESSION";
+                    sessionColor = "#ec4899";
+                } else {
+                    sessionName = "SYDNEY SESSION";
+                    sessionColor = "#06b6d4";
+                }
+
+                const clkEl = document.getElementById('nav-utc-clock');
+                if (clkEl) clkEl.innerText = timeStr;
+                const sessEl = document.getElementById('nav-market-session');
+                if (sessEl) {
+                    sessEl.innerText = `● ${sessionName}`;
+                    sessEl.style.color = sessionColor;
+                }
+            }
+
             window.onload = () => {
                 renderDeltaHistogram();
                 initRiverParticles();
                 animateRiverLoop();
                 syncData();
                 setInterval(syncData, 2000);
+                updateMarketSessionClock();
+                setInterval(updateMarketSessionClock, 1000);
             };
 
             window.onresize = () => {
