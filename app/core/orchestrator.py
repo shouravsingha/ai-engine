@@ -20,6 +20,7 @@ from app.core.ai_brain import AIBrainOverseer
 from app.agency.branding_engine import BrandingEngine
 from app.agency.webhook_dispatcher import SocialWebhookDispatcher
 from app.core.telegram_bot import TelegramSentinelBot
+from app.trading.trade_journal import TradeJournal
 
 class MasterOrchestrator:
     def __init__(self):
@@ -40,6 +41,7 @@ class MasterOrchestrator:
         self.exness = ExnessBridge(command_queue=self.cloud_command_queue)
         self.branding = BrandingEngine()
         self.webhooks = SocialWebhookDispatcher()
+        self.journal = TradeJournal()
         
         # Telegram Sentinel Bot
         self.telegram = TelegramSentinelBot(
@@ -165,11 +167,32 @@ class MasterOrchestrator:
 
                                 self.telegram.send_trade_signal(order, asset=asset_title)
                                 self.webhooks.broadcast_trade(order, asset=asset_title)
+                                self.journal.record_open_trade(ticket_no, symbol_exec, "BUY", vol, entry, sl, tp, "AI Brain Verified OTE Setup")
                             else:
                                 fail_reason = mt5_res.get('comment') or mt5_res.get('message') or 'Rejected'
                                 self.log(f"⚠️ Trade Execution Failed for {symbol_exec}: {fail_reason}")
 
         self.multi_market_matrix = matrix
+
+        # 4. ACTIVE AI BRAIN POSITION SUPERVISION (Break-Even Shield & Trailing Stop)
+        self.brain.manage_brain_rest_cycle(len(self.exness.open_positions))
+        
+        # Ensure open positions are recorded in persistent database
+        for p in self.exness.open_positions:
+            self.journal.record_open_trade(p.get("ticket"), p.get("symbol"), p.get("side", "BUY"), p.get("volume", 0.01), p.get("open_price", 0.0), p.get("sl", 0.0), p.get("tp", 0.0), "Active MT5 Position")
+
+        supervision_actions = self.brain.evaluate_open_positions(self.exness.open_positions, matrix)
+        for act in supervision_actions:
+            if act["action"] == "modify_sl":
+                m_res = self.exness.modify_position_sl_tp(act["ticket"], act["new_sl"], act.get("new_tp", 0.0))
+                self.send_agent_message("Marcus", "Risk Officer (PA_02)", act["reason"])
+                self.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ DEFENSE TRIGGER: {act['symbol']} #{act['ticket']} protected.")
+                self.telegram.send_message(f"🛡️ <b>AI BRAIN POSITION DEFENSE:</b>\n{act['reason']}")
+                self.journal.record_open_trade(act["ticket"], act["symbol"], "BUY", 0.01, 0.0, act["new_sl"], act.get("new_tp", 0.0), act["reason"])
+            elif act["action"] == "close_profit_book":
+                c_res = self.exness.close_position(act["ticket"])
+                self.send_agent_message("Alex", "Chief Quant (PA_01)", act["reason"])
+                self.telegram.send_message(f"⚡ <b>SMART PROFIT BOOKED:</b>\n{act['reason']}")
 
         active_p = matrix["gold"]["price"] if any(t['symbol'] == 'XAUUSDm' for t in self.account.open_trades) else matrix["btc"]["price"]
         closed_trades = self.account.update_open_trades(active_p)
@@ -197,6 +220,9 @@ class MasterOrchestrator:
                 try:
                     self.run_simultaneous_scan()
                     counter += 1
+                    
+                    if counter % 10 == 0:
+                        self.journal.sync_mt5_history(self.exness)
                     
                     if counter % 8 == 0:
                         gold_p = self.multi_market_matrix.get("gold", {}).get("price", 2748.20)

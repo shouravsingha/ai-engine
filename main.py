@@ -39,11 +39,77 @@ def get_telemetry():
         "agents": orchestrator.agents,
         "agent_messages": orchestrator.agent_messages,
         "open_trades": exness_status.get("open_positions", []),
-        "trade_history": orchestrator.account.trade_history[-10:],
+        "trade_history": orchestrator.journal.get_recent_trades(limit=50),
+        "account_stats": orchestrator.journal.get_account_stats(),
         "branding_posts": orchestrator.branding.get_feed(),
         "telegram_status": {"bot": "@SingAiTradebot", "active": orchestrator.telegram.is_running},
         "webhooks": orchestrator.webhooks.webhooks,
         "logs": orchestrator.system_logs
+    })
+
+class VoiceInput(BaseModel):
+    transcript: Optional[str] = None
+    message: Optional[str] = None
+
+@app.post("/api/voice/chat")
+def voice_chat(data: VoiceInput):
+    transcript = (data.transcript or data.message or "").strip()
+    orchestrator.send_agent_message("You (Voice)", "Director", f"🎙️ \"{transcript}\"")
+    ex_status = orchestrator.exness.get_status()
+    context = {
+        "balance": ex_status.get("balance", 0.0),
+        "equity": ex_status.get("equity", 0.0),
+        "floating_pnl": ex_status.get("floating_pnl", 0.0),
+        "open_positions": ex_status.get("open_positions", [])
+    }
+    res = orchestrator.brain.process_voice_directive(transcript, context)
+    
+    if res.get("action") == "panic_flat":
+        orchestrator.exness.close_all_positions()
+        orchestrator.send_agent_message("Marcus", "Risk Officer (PA_02)", "🚨 Voice directive executed: All positions flattened.")
+    elif res.get("action") == "breakeven":
+        sym = res.get("symbol")
+        for pos in ex_status.get("open_positions", []):
+            if not sym or sym.lower() in pos.get("symbol", "").lower():
+                orchestrator.exness.modify_position_sl_tp(pos.get("ticket"), sl=pos.get("open_price"), tp=pos.get("tp"))
+                orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ Voice command: Moved SL to break-even on {pos.get('symbol')} #{pos.get('ticket')}")
+
+    orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"🗣️ {res['reply_text']}")
+    return JSONResponse({
+        "reply": res["reply_text"],
+        "action": res.get("action"),
+        "brain_status": res.get("brain_status"),
+        "cognitive_load": res.get("cognitive_load")
+    })
+
+@app.get("/api/trades/history")
+def get_trade_history():
+    return JSONResponse({
+        "trades": orchestrator.journal.get_recent_trades(limit=50),
+        "stats": orchestrator.journal.get_account_stats()
+    })
+
+@app.get("/api/account/metrics")
+def get_account_metrics():
+    ex_status = orchestrator.exness.get_status()
+    stats = orchestrator.journal.get_account_stats()
+    bal = float(ex_status.get("balance", 0.0))
+    eq = float(ex_status.get("equity", 0.0))
+    pnl = float(ex_status.get("floating_pnl", 0.0))
+    open_count = len(ex_status.get("open_positions", []))
+    margin = round(open_count * 0.56, 2)
+    free_margin = round(eq - margin, 2)
+    margin_level = round((eq / margin * 100), 1) if margin > 0 else 1000.0
+    return JSONResponse({
+        "balance": bal,
+        "equity": eq,
+        "floating_pnl": pnl,
+        "margin": margin,
+        "free_margin": free_margin,
+        "margin_level_pct": margin_level,
+        "open_positions_count": open_count,
+        "stats": stats,
+        "brain_status": orchestrator.brain.get_status()
     })
 
 class TaskInput(BaseModel):
@@ -823,6 +889,9 @@ def index():
 
             <!-- Sound & Voice Toggles + 24/7 Cloud Bot + Exness Status -->
             <div class="nav-toggles-box" style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+                <button onclick="openVoiceModal()" style="background: linear-gradient(135deg, #ec4899, #8b5cf6); border: none; color: #fff; padding: 5px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 0 10px rgba(236,72,153,0.35);">
+                    🎙️ Voice Chat with AI Brain
+                </button>
                 <button onclick="openCloudModal()" style="background: rgba(14, 165, 233, 0.15); border: 1px solid #0ea5e9; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                     ☁️ 24/7 Cloud Bot
                 </button>
@@ -871,7 +940,9 @@ def index():
                         <span>Balance: <strong style="color: var(--of-blue); font-size: 12px;" id="subhead-bal">$20.21 USD</strong></span>
                         <span>Equity: <strong id="subhead-eq" style="color: var(--of-green-line); font-size: 12px;">$20.21 USD</strong></span>
                         <span>PnL: <strong id="subhead-pnl" style="color: #10b981; font-size: 12px;">+$0.00 USD</strong></span>
-                        <span style="color: var(--of-text-muted);">| 12 up · 8 flat · 10 down</span>
+                        <span>Margin Level: <strong id="subhead-margin-lvl" style="color: #38bdf8; font-size: 12px;">820%</strong></span>
+                        <span>Win Rate: <strong id="subhead-win-rate" style="color: #10b981; font-size: 12px;">--%</strong></span>
+                        <span>Brain: <strong id="subhead-brain-mode" style="color: #ec4899; font-size: 12px;">ACTIVE</strong></span>
                     </div>
                     <div class="subhead-row-2" style="display: flex; align-items: center; gap: 8px;">
                         <span id="subhead-deal" style="background: var(--of-card); border: 1px solid var(--of-border); padding: 3px 8px; border-radius: 6px; font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--of-blue); display: flex; align-items: center; gap: 6px;">
@@ -946,6 +1017,107 @@ def index():
 
                     <!-- 5. RIGHT FOCUS CARDS (SIEMENS, SENSEX, HINDALCO, BRITANNIA MATCH) -->
                     <div class="of-cards-col" id="focus-cards-box"></div>
+                </div>
+            </div>
+
+            <!-- INSTITUTIONAL MT5 TERMINAL & PERSISTENT TRADE JOURNAL PANEL -->
+            <div style="margin-top: 24px; background: var(--of-card); border: 1px solid var(--of-border-strong); border-radius: 16px; padding: 20px; box-shadow: var(--of-shadow);">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--of-border); padding-bottom: 14px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 22px;">⚡</span>
+                        <div>
+                            <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--of-text-dark);">Institutional MT5 Execution & AI Brain Journal</h3>
+                            <small style="color: var(--of-text-muted); font-size: 11px;">Active Break-Even Shield, Trailing Stops & Persistent SQLite Trade Records</small>
+                        </div>
+                    </div>
+
+                    <!-- Panel Tabs -->
+                    <div style="display: flex; gap: 8px;">
+                        <button id="tab-btn-active" onclick="switchTradeTab('active')" style="background: #0284c7; color: #fff; border: 1px solid #0284c7; padding: 6px 14px; border-radius: 8px; font-size: 11.5px; font-weight: 800; cursor: pointer;">
+                            Live Open Trades (<span id="panel-tab-count">0</span>)
+                        </button>
+                        <button id="tab-btn-history" onclick="switchTradeTab('history')" style="background: var(--of-card-subtle); color: var(--of-text-muted); border: 1px solid var(--of-border); padding: 6px 14px; border-radius: 8px; font-size: 11.5px; font-weight: 800; cursor: pointer;">
+                            📜 Trade History (SQLite Database)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Account Metrics Highlights -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 18px;">
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
+                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">BALANCE</div>
+                        <div id="card-acc-balance" style="font-size: 15px; font-weight: 800; color: var(--of-blue);">$17.94</div>
+                    </div>
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
+                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">EQUITY</div>
+                        <div id="card-acc-equity" style="font-size: 15px; font-weight: 800; color: var(--of-green-line);">$22.31</div>
+                    </div>
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
+                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">FREE MARGIN</div>
+                        <div id="card-acc-margin" style="font-size: 15px; font-weight: 800; color: var(--of-text-dark);">$21.19</div>
+                    </div>
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
+                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">MARGIN LEVEL</div>
+                        <div id="card-acc-margin-lvl" style="font-size: 15px; font-weight: 800; color: #38bdf8;">823%</div>
+                    </div>
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
+                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">WIN RATE</div>
+                        <div id="card-acc-win-rate" style="font-size: 15px; font-weight: 800; color: var(--of-green-line);">--%</div>
+                    </div>
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 10px 14px;">
+                        <div style="font-size: 10px; color: var(--of-text-muted); font-weight: 700;">DAILY PNL</div>
+                        <div id="card-acc-daily-pnl" style="font-size: 15px; font-weight: 800; color: #facc15;">+$0.00</div>
+                    </div>
+                </div>
+
+                <!-- Table 1: Live Open MT5 Positions -->
+                <div id="tab-content-active">
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid var(--of-border); color: var(--of-text-muted); font-size: 11px;">
+                                    <th style="padding: 8px;">TICKET</th>
+                                    <th style="padding: 8px;">ASSET</th>
+                                    <th style="padding: 8px;">SIDE</th>
+                                    <th style="padding: 8px;">VOLUME</th>
+                                    <th style="padding: 8px;">ENTRY</th>
+                                    <th style="padding: 8px;">CURRENT</th>
+                                    <th style="padding: 8px;">STOP LOSS</th>
+                                    <th style="padding: 8px;">TAKE PROFIT</th>
+                                    <th style="padding: 8px;">FLOATING PNL</th>
+                                    <th style="padding: 8px; text-align: right;">ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="open-positions-tbody">
+                                <tr><td colspan="10" style="padding: 20px; text-align: center; color: var(--of-text-muted);">Syncing live MT5 positions...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Table 2: Persistent Trade History (SQLite) -->
+                <div id="tab-content-history" style="display: none;">
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid var(--of-border); color: var(--of-text-muted); font-size: 11px;">
+                                    <th style="padding: 8px;">TICKET</th>
+                                    <th style="padding: 8px;">ASSET</th>
+                                    <th style="padding: 8px;">SIDE</th>
+                                    <th style="padding: 8px;">LOT</th>
+                                    <th style="padding: 8px;">OPEN PRICE</th>
+                                    <th style="padding: 8px;">CLOSE PRICE</th>
+                                    <th style="padding: 8px;">PROFIT (USD)</th>
+                                    <th style="padding: 8px;">STATUS</th>
+                                    <th style="padding: 8px;">EXIT RATIONALE</th>
+                                    <th style="padding: 8px;">TIMESTAMP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trade-history-tbody">
+                                <tr><td colspan="10" style="padding: 20px; text-align: center; color: var(--of-text-muted);">Loading persistent journal records from SQLite...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -1045,6 +1217,58 @@ def index():
                     </button>
                 </div>
             </div>
+
+        <!-- REAL-TIME 2-WAY VOICE DIRECTIVE MODAL (BENGALI & ENGLISH) -->
+        <div id="voice-chat-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(6,8,16,0.82); backdrop-filter:blur(10px); z-index:10001; align-items:center; justify-content:center; padding:16px;">
+            <div style="background:var(--of-card); border:1px solid rgba(236,72,153,0.4); border-radius:20px; max-width:540px; width:100%; padding:24px; box-shadow:0 25px 70px rgba(236,72,153,0.25); font-family:'Plus Jakarta Sans',sans-serif; color:var(--of-text-dark); position:relative;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid var(--of-border); padding-bottom:12px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #ec4899, #8b5cf6); display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 0 12px rgba(236,72,153,0.6);">🎙️</div>
+                        <div>
+                            <h3 style="margin:0; font-size:16px; font-weight:800; color:var(--of-text-dark);">AI Central Brain Voice Assistant</h3>
+                            <small style="color:var(--of-text-muted); font-size:11px;">2-Way Voice Chat in Bengali / Banglish & English</small>
+                        </div>
+                    </div>
+                    <button onclick="closeVoiceModal()" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--of-text-muted);">✕</button>
+                </div>
+
+                <!-- Voice Status Visualizer -->
+                <div style="background:var(--of-card-subtle); border:1px solid var(--of-border); border-radius:14px; padding:16px; text-align:center; margin-bottom:14px;">
+                    <div id="voice-pulse-ring" style="width:70px; height:70px; border-radius:50%; background:linear-gradient(135deg, #ec4899, #8b5cf6); margin:0 auto 12px; display:flex; align-items:center; justify-content:center; font-size:30px; cursor:pointer; box-shadow:0 0 20px rgba(236,72,153,0.4); transition:transform 0.2s;" onclick="toggleDeviceListening()">
+                        <span id="voice-mic-icon">🎙️</span>
+                    </div>
+                    <div id="voice-status-label" style="font-size:13px; font-weight:800; color:var(--of-blue); margin-bottom:4px;">Tap Mic to Speak with AI Brain</div>
+                    <div style="font-size:11px; color:var(--of-text-muted);">Supports Bengali ("EURUSD breakeven koro", "account status bolo") and English</div>
+                </div>
+
+                <!-- Speech Transcript / Dialog Log -->
+                <div id="voice-dialog-log" style="height:140px; overflow-y:auto; background:rgba(0,0,0,0.25); border:1px solid var(--of-border); border-radius:12px; padding:12px; font-size:12px; margin-bottom:14px; display:flex; flex-direction:column; gap:8px;">
+                    <div style="color:var(--of-text-muted); text-align:center; font-style:italic; margin:auto 0;">
+                        Brain is ready. Tap the microphone or click a quick voice directive below.
+                    </div>
+                </div>
+
+                <!-- Text fallback input -->
+                <div style="display:flex; gap:8px; margin-bottom:14px;">
+                    <input id="voice-text-fallback" type="text" placeholder="Or type directive (e.g. breakeven, stats, rest)..." style="flex:1; background:var(--of-card-subtle); border:1px solid var(--of-border); border-radius:8px; padding:8px 12px; font-size:12px; color:var(--of-text-dark); outline:none;" onkeypress="if(event.key==='Enter') sendTextDirective()">
+                    <button onclick="sendTextDirective()" style="background:#0284c7; color:#fff; border:none; border-radius:8px; padding:8px 14px; font-size:12px; font-weight:800; cursor:pointer;">Send</button>
+                </div>
+
+                <!-- Quick Directive Presets -->
+                <div style="font-size:10.5px; font-weight:700; color:var(--of-text-muted); margin-bottom:6px; text-transform:uppercase;">Quick Voice Commands:</div>
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                    <button onclick="sendQuickVoicePrompt('EURUSD break-even koro')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:var(--of-blue); padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">🛡️ Break-Even EURUSD</button>
+                    <button onclick="sendQuickVoicePrompt('trailing stop lock koro')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:#10b981; padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">📈 Trail Profit</button>
+                    <button onclick="sendQuickVoicePrompt('account status bolo')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:#f59e0b; padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">📊 Account Status</button>
+                    <button onclick="sendQuickVoicePrompt('brain rest energy ki')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:#ec4899; padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">🧠 Rest Energy Cycle</button>
+                    <button onclick="sendQuickVoicePrompt('market obosta kemon')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:var(--of-text-muted); padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">🌐 Market Sentiment</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- FLOATING VOICE DIRECTIVE MIC BUTTON (BOTTOM RIGHT) -->
+        <div id="voice-floating-trigger" onclick="openVoiceModal()" title="Voice Chat with AI Central Brain" style="position:fixed; bottom:24px; right:24px; z-index:9999; width:54px; height:54px; border-radius:50%; background:linear-gradient(135deg, #ec4899, #8b5cf6); box-shadow:0 8px 25px rgba(236,72,153,0.5); display:flex; align-items:center; justify-content:center; font-size:24px; cursor:pointer; border:2px solid rgba(255,255,255,0.3); transition:transform 0.2s, box-shadow 0.2s;">
+            🎙️
         </div>
 
         <!-- VIEW 2: 3D ROBOT OFFICE WITH AI CENTRAL NEURAL BRAIN -->
@@ -1775,6 +1999,8 @@ def index():
                         if (pMargin) pMargin.innerText = `$${freeMargin} USD`;
                         const pCount = document.getElementById('panel-open-count');
                         if (pCount) pCount.innerText = openCount;
+                        const pTabCount = document.getElementById('panel-tab-count');
+                        if (pTabCount) pTabCount.innerText = openCount;
 
                         // Exness Open Positions Table Rows
                         const tbody = document.getElementById('open-positions-tbody');
@@ -1821,6 +2047,342 @@ def index():
                         }
                     }
                 } catch(e) {}
+            }
+
+            // --- PERSISTENT JOURNAL & METRICS TAB CONTROLS ---
+            let currentTradeTab = 'active';
+
+            function switchTradeTab(tab) {
+                currentTradeTab = tab;
+                const activeTabBtn = document.getElementById('tab-btn-active');
+                const historyTabBtn = document.getElementById('tab-btn-history');
+                const activeContent = document.getElementById('tab-content-active');
+                const historyContent = document.getElementById('tab-content-history');
+
+                if (tab === 'active') {
+                    if (activeContent) activeContent.style.display = 'block';
+                    if (historyContent) historyContent.style.display = 'none';
+                    if (activeTabBtn) {
+                        activeTabBtn.style.background = '#0284c7';
+                        activeTabBtn.style.color = '#fff';
+                        activeTabBtn.style.borderColor = '#0284c7';
+                    }
+                    if (historyTabBtn) {
+                        historyTabBtn.style.background = 'var(--of-card-subtle)';
+                        historyTabBtn.style.color = 'var(--of-text-muted)';
+                        historyTabBtn.style.borderColor = 'var(--of-border)';
+                    }
+                } else {
+                    if (activeContent) activeContent.style.display = 'none';
+                    if (historyContent) historyContent.style.display = 'block';
+                    if (historyTabBtn) {
+                        historyTabBtn.style.background = '#0284c7';
+                        historyTabBtn.style.color = '#fff';
+                        historyTabBtn.style.borderColor = '#0284c7';
+                    }
+                    if (activeTabBtn) {
+                        activeTabBtn.style.background = 'var(--of-card-subtle)';
+                        activeTabBtn.style.color = 'var(--of-text-muted)';
+                        activeTabBtn.style.borderColor = 'var(--of-border)';
+                    }
+                    fetchTradeHistory();
+                }
+            }
+
+            async function fetchTradeHistory() {
+                try {
+                    const res = await fetch('/api/trades/history?limit=30');
+                    const d = await res.json();
+                    const tbody = document.getElementById('trade-history-tbody');
+                    if (!tbody) return;
+
+                    if (!d.trades || d.trades.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="10" style="padding: 24px; text-align: center; color: var(--of-text-muted); font-style: italic;">No historical trade records found in SQLite database yet. Trades will be recorded automatically when opened/closed.</td></tr>`;
+                        return;
+                    }
+
+                    tbody.innerHTML = d.trades.map(t => {
+                        const isBuy = t.action === 'BUY';
+                        const profit = Number(t.pnl_usd || 0.0);
+                        const isWin = profit >= 0;
+                        const dateStr = t.closed_at || t.timestamp || '';
+                        const formattedDate = dateStr ? dateStr.replace('T', ' ').split('.')[0] : '--';
+                        return `
+                            <tr style="border-bottom: 1px solid var(--of-border);">
+                                <td style="padding: 8px 10px; font-weight: 800; color: var(--of-blue);">#${t.ticket}</td>
+                                <td style="padding: 8px 10px; font-weight: 800; color: var(--of-text-dark);">${t.symbol}</td>
+                                <td style="padding: 8px 10px;">
+                                    <span style="background: ${isBuy ? 'var(--of-green-bg)' : 'var(--of-red-bg)'}; color: ${isBuy ? 'var(--of-green-line)' : 'var(--of-red-line)'}; padding: 2px 7px; border-radius: 4px; font-weight: 800; font-size: 10px;">
+                                        ${t.action}
+                                    </span>
+                                </td>
+                                <td style="padding: 8px 10px; font-weight: 700;">${Number(t.volume || 0.01).toFixed(2)}</td>
+                                <td style="padding: 8px 10px;">${Number(t.open_price || 0).toFixed(4)}</td>
+                                <td style="padding: 8px 10px;">${t.close_price ? Number(t.close_price).toFixed(4) : '--'}</td>
+                                <td style="padding: 8px 10px; font-weight: 800; color: ${isWin ? 'var(--of-green-line)' : 'var(--of-red-line)'};">
+                                    ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}
+                                </td>
+                                <td style="padding: 8px 10px;">
+                                    <span style="background: ${t.status === 'CLOSED' ? 'rgba(100,116,139,0.2)' : 'rgba(16,185,129,0.2)'}; color: ${t.status === 'CLOSED' ? '#94a3b8' : '#10b981'}; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;">
+                                        ${t.status}
+                                    </span>
+                                </td>
+                                <td style="padding: 8px 10px; font-size: 11px; color: var(--of-text-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${t.notes || ''}">
+                                    ${t.notes || 'Autonomous AI Execution'}
+                                </td>
+                                <td style="padding: 8px 10px; font-size: 10.5px; color: var(--of-text-muted); font-family: 'JetBrains Mono';">
+                                    ${formattedDate}
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                } catch (e) {
+                    console.error("Failed to fetch trade history:", e);
+                }
+            }
+
+            async function updateAccountMetrics() {
+                try {
+                    const res = await fetch('/api/account/metrics');
+                    const d = await res.json();
+                    if (!d) return;
+                    const m = d.metrics || d;
+                    const stats = m.stats || {};
+                    const winRate = m.win_rate_pct !== undefined ? m.win_rate_pct : (stats.win_rate_pct || 0);
+                    const dailyPnl = m.daily_pnl_usd !== undefined ? m.daily_pnl_usd : (stats.daily_pnl_usd || 0);
+                    const brainMode = m.brain_mode || (m.brain_status ? m.brain_status.state : 'active');
+                    const brainEnergy = m.brain_energy !== undefined ? m.brain_energy : (m.brain_status ? m.brain_status.energy : 88);
+
+                    // Update Institutional Cards
+                    const cBal = document.getElementById('card-acc-balance');
+                    if (cBal) cBal.innerText = `$${Number(m.balance || 0).toFixed(2)}`;
+                    const cEq = document.getElementById('card-acc-equity');
+                    if (cEq) cEq.innerText = `$${Number(m.equity || 0).toFixed(2)}`;
+                    const cMargin = document.getElementById('card-acc-margin');
+                    if (cMargin) cMargin.innerText = `$${Number(m.free_margin || 0).toFixed(2)}`;
+                    const cMarginLvl = document.getElementById('card-acc-margin-lvl');
+                    if (cMarginLvl) cMarginLvl.innerText = `${Math.round(m.margin_level_pct || 0)}%`;
+                    const cWinRate = document.getElementById('card-acc-win-rate');
+                    if (cWinRate) cWinRate.innerText = `${Number(winRate).toFixed(1)}%`;
+                    const cDailyPnl = document.getElementById('card-acc-daily-pnl');
+                    if (cDailyPnl) {
+                        const dp = Number(dailyPnl);
+                        cDailyPnl.innerText = `${dp >= 0 ? '+' : ''}$${dp.toFixed(2)}`;
+                        cDailyPnl.style.color = dp >= 0 ? 'var(--of-green-line)' : 'var(--of-red-line)';
+                    }
+
+                    // Update Window Subheader Badges
+                    const subMarginLvl = document.getElementById('subhead-margin-lvl');
+                    if (subMarginLvl) subMarginLvl.innerText = `${Math.round(m.margin_level_pct || 0)}%`;
+                    const subWinRate = document.getElementById('subhead-win-rate');
+                    if (subWinRate) subWinRate.innerText = `${Number(winRate).toFixed(1)}%`;
+                    const subBrainMode = document.getElementById('subhead-brain-mode');
+                    if (subBrainMode) {
+                        const mode = String(brainMode).toUpperCase();
+                        subBrainMode.innerText = `${mode} (${Math.round(brainEnergy)}%)`;
+                        subBrainMode.style.color = mode === 'RESTING' ? '#38bdf8' : '#ec4899';
+                    }
+                } catch (e) {
+                    console.error("Failed to update account metrics:", e);
+                }
+            }
+
+            // --- 2-WAY VOICE CHAT WITH AI CENTRAL BRAIN ---
+            let voiceRecognition = null;
+            let isListening = false;
+
+            function openVoiceModal() {
+                const modal = document.getElementById('voice-chat-modal');
+                if (modal) modal.style.display = 'flex';
+            }
+
+            function closeVoiceModal() {
+                const modal = document.getElementById('voice-chat-modal');
+                if (modal) modal.style.display = 'none';
+                if (voiceRecognition && isListening) {
+                    voiceRecognition.stop();
+                    isListening = false;
+                }
+                updateVoiceStatusUI('idle');
+            }
+
+            function updateVoiceStatusUI(state) {
+                const ring = document.getElementById('voice-pulse-ring');
+                const label = document.getElementById('voice-status-label');
+                const mic = document.getElementById('voice-mic-icon');
+                if (!label) return;
+
+                if (state === 'listening') {
+                    if (ring) {
+                        ring.style.animation = 'pulseRed 1.2s infinite';
+                        ring.style.background = 'linear-gradient(135deg, #ef4444, #ec4899)';
+                    }
+                    if (mic) mic.innerText = '🔴';
+                    label.innerText = 'Listening... Speak in Bengali or English';
+                    label.style.color = '#ec4899';
+                } else if (state === 'thinking') {
+                    if (ring) {
+                        ring.style.animation = 'pulseRed 1s infinite';
+                        ring.style.background = 'linear-gradient(135deg, #8b5cf6, #3b82f6)';
+                    }
+                    if (mic) mic.innerText = '🧠';
+                    label.innerText = 'AI Brain Thinking & Analyzing...';
+                    label.style.color = '#38bdf8';
+                } else if (state === 'speaking') {
+                    if (ring) {
+                        ring.style.animation = 'none';
+                        ring.style.background = 'linear-gradient(135deg, #10b981, #06b6d4)';
+                    }
+                    if (mic) mic.innerText = '🔊';
+                    label.innerText = 'AI Brain is Speaking Aloud...';
+                    label.style.color = '#10b981';
+                } else {
+                    if (ring) {
+                        ring.style.animation = 'none';
+                        ring.style.background = 'linear-gradient(135deg, #ec4899, #8b5cf6)';
+                    }
+                    if (mic) mic.innerText = '🎙️';
+                    label.innerText = 'Tap Mic to Speak with AI Brain';
+                    label.style.color = 'var(--of-blue)';
+                }
+            }
+
+            function toggleDeviceListening() {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {
+                    appendVoiceDialog('System', 'Browser Speech Recognition is not supported on this browser. You can type your command in the box below!');
+                    return;
+                }
+
+                if (isListening) {
+                    if (voiceRecognition) voiceRecognition.stop();
+                    isListening = false;
+                    updateVoiceStatusUI('idle');
+                    return;
+                }
+
+                try {
+                    voiceRecognition = new SpeechRecognition();
+                    voiceRecognition.continuous = false;
+                    voiceRecognition.interimResults = false;
+                    voiceRecognition.lang = 'bn-BD';
+
+                    voiceRecognition.onstart = () => {
+                        isListening = true;
+                        updateVoiceStatusUI('listening');
+                    };
+
+                    voiceRecognition.onresult = (event) => {
+                        const transcript = event.results[0][0].transcript;
+                        isListening = false;
+                        updateVoiceStatusUI('thinking');
+                        sendVoiceDirective(transcript);
+                    };
+
+                    voiceRecognition.onerror = (event) => {
+                        console.warn("Speech recognition error:", event.error);
+                        if (voiceRecognition.lang === 'bn-BD') {
+                            voiceRecognition.lang = 'en-US';
+                        }
+                        isListening = false;
+                        updateVoiceStatusUI('idle');
+                    };
+
+                    voiceRecognition.onend = () => {
+                        isListening = false;
+                        const label = document.getElementById('voice-status-label');
+                        if (label && label.innerText.startsWith('Listening')) {
+                            updateVoiceStatusUI('idle');
+                        }
+                    };
+
+                    voiceRecognition.start();
+                } catch (e) {
+                    console.error("Speech Recognition init error:", e);
+                    appendVoiceDialog('System', 'Microphone access denied or error. Please type your directive below.');
+                    isListening = false;
+                    updateVoiceStatusUI('idle');
+                }
+            }
+
+            function appendVoiceDialog(sender, text) {
+                const log = document.getElementById('voice-dialog-log');
+                if (!log) return;
+                const isUser = sender === 'You';
+                const msgDiv = document.createElement('div');
+                msgDiv.style.display = 'flex';
+                msgDiv.style.justifyContent = isUser ? 'flex-end' : 'flex-start';
+                msgDiv.innerHTML = `
+                    <div style="max-width: 85%; padding: 8px 12px; border-radius: 12px; font-size: 11.5px; line-height: 1.4; ${isUser ? 'background: #0284c7; color: #fff;' : 'background: var(--of-card-subtle); border: 1px solid var(--of-border); color: var(--of-text-dark);'}">
+                        <strong>${sender}:</strong> ${text}
+                    </div>
+                `;
+                log.appendChild(msgDiv);
+                log.scrollTop = log.scrollHeight;
+            }
+
+            async function sendVoiceDirective(directiveText) {
+                if (!directiveText || !directiveText.trim()) return;
+                const cleanText = directiveText.trim();
+                appendVoiceDialog('You', cleanText);
+                updateVoiceStatusUI('thinking');
+
+                try {
+                    const res = await fetch('/api/voice/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: cleanText })
+                    });
+                    const d = await res.json();
+                    const reply = d.reply || 'Directive processed by AI Central Brain.';
+                    appendVoiceDialog('AI Brain', reply);
+
+                    // Speak response aloud via SpeechSynthesis
+                    speakVoiceResponse(reply);
+
+                    // Refresh telemetry and metrics
+                    syncData();
+                    updateAccountMetrics();
+                    if (currentTradeTab === 'history') {
+                        fetchTradeHistory();
+                    }
+                } catch (e) {
+                    appendVoiceDialog('AI Brain', 'Sorry brother, network error while communicating with AI Brain. Please retry.');
+                    updateVoiceStatusUI('idle');
+                }
+            }
+
+            function speakVoiceResponse(text) {
+                if (!('speechSynthesis' in window)) {
+                    updateVoiceStatusUI('idle');
+                    return;
+                }
+                try {
+                    window.speechSynthesis.cancel();
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.rate = 1.05;
+                    utterance.pitch = 1.0;
+                    utterance.onstart = () => updateVoiceStatusUI('speaking');
+                    utterance.onend = () => updateVoiceStatusUI('idle');
+                    utterance.onerror = () => updateVoiceStatusUI('idle');
+                    window.speechSynthesis.speak(utterance);
+                } catch (e) {
+                    updateVoiceStatusUI('idle');
+                }
+            }
+
+            function sendQuickVoicePrompt(promptText) {
+                const input = document.getElementById('voice-text-fallback');
+                if (input) input.value = promptText;
+                sendVoiceDirective(promptText);
+            }
+
+            function sendTextDirective() {
+                const input = document.getElementById('voice-text-fallback');
+                if (!input || !input.value.trim()) return;
+                const text = input.value.trim();
+                input.value = '';
+                sendVoiceDirective(text);
             }
 
             // 3D Engine with AI Central Neural Brain & 7 Seated Robot Employees
@@ -2006,7 +2568,10 @@ def index():
                 initRiverParticles();
                 animateRiverLoop();
                 syncData();
+                updateAccountMetrics();
+                fetchTradeHistory();
                 setInterval(syncData, 2000);
+                setInterval(updateAccountMetrics, 4000);
             };
 
             window.onresize = () => {
