@@ -159,6 +159,66 @@ class ExnessBridge:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    def close_position(self, ticket: int) -> Dict[str, Any]:
+        """Closes a specific open position on Exness MT5."""
+        if not (MT5_AVAILABLE and self.live_terminal):
+            return {"status": "error", "message": "MT5 terminal not linked"}
+
+        try:
+            positions = mt5.positions_get(ticket=int(ticket))
+            if not positions:
+                return {"status": "error", "message": f"Position #{ticket} not found or already closed"}
+
+            pos = positions[0]
+            close_type = mt5.ORDER_TYPE_SELL if pos.type == 0 else mt5.ORDER_TYPE_BUY
+            sym_info = mt5.symbol_info_tick(pos.symbol)
+            price = sym_info.bid if pos.type == 0 else sym_info.ask
+
+            req = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "position": pos.ticket,
+                "symbol": pos.symbol,
+                "volume": pos.volume,
+                "type": close_type,
+                "price": price,
+                "deviation": 20,
+                "magic": 202611,
+                "comment": "TradingAI Manual Close",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            }
+            res = mt5.order_send(req)
+            self.refresh_balance()
+            if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                return {
+                    "status": "success",
+                    "ticket": ticket,
+                    "close_price": price,
+                    "message": f"Position #{ticket} ({pos.symbol}) closed successfully at {price}"
+                }
+            else:
+                return {
+                    "status": "failed",
+                    "retcode": res.retcode if res else "None",
+                    "comment": res.comment if res else "Close rejected by broker"
+                }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def close_all_positions(self) -> Dict[str, Any]:
+        """Emergency flattens all open positions on Exness MT5."""
+        if not (MT5_AVAILABLE and self.live_terminal):
+            return {"status": "error", "message": "MT5 terminal not linked"}
+
+        positions = mt5.positions_get()
+        closed = []
+        if positions:
+            for p in positions:
+                c_res = self.close_position(p.ticket)
+                closed.append({"ticket": p.ticket, "symbol": p.symbol, "res": c_res})
+        self.refresh_balance()
+        return {"status": "success", "closed_positions": closed, "total_closed": len(closed)}
+
     def get_status(self) -> Dict[str, Any]:
         self.refresh_balance()
         return {

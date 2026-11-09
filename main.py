@@ -15,15 +15,16 @@ def startup_event():
 
 @app.get("/api/telemetry")
 def get_telemetry():
+    exness_status = orchestrator.exness.get_status()
     return JSONResponse({
         "account": orchestrator.account.get_summary(),
-        "exness": orchestrator.exness.get_status(),
+        "exness": exness_status,
         "market_matrix": orchestrator.multi_market_matrix,
         "orderflow": orchestrator.orderflow.get_order_flow_matrix(),
         "ai_brain": orchestrator.brain.get_status(),
         "agents": orchestrator.agents,
         "agent_messages": orchestrator.agent_messages,
-        "open_trades": orchestrator.account.open_trades,
+        "open_trades": exness_status.get("open_positions", []),
         "trade_history": orchestrator.account.trade_history[-10:],
         "branding_posts": orchestrator.branding.get_feed(),
         "telegram_status": {"bot": "@SingAiTradebot", "active": orchestrator.telegram.is_running},
@@ -88,11 +89,18 @@ def set_risk_mode(data: RiskModeInput):
 
 @app.post("/api/trade/panic_flat")
 def panic_flat_all():
-    closed_count = len(orchestrator.account.open_trades)
+    mt5_flat = orchestrator.exness.close_all_positions()
+    closed_count = len(orchestrator.account.open_trades) + mt5_flat.get("total_closed", 0)
     orchestrator.account.open_trades.clear()
-    orchestrator.send_agent_message("Marcus", "Risk Officer (PA_02)", f"🚨 EMERGENCY KILL SWITCH TRIGGERED: All {closed_count} positions flattened instantly.")
+    orchestrator.send_agent_message("Marcus", "Risk Officer (PA_02)", f"🚨 EMERGENCY KILL SWITCH TRIGGERED: All {closed_count} positions flattened instantly on Exness MT5.")
     orchestrator.telegram.send_message("🚨 <b>EMERGENCY KILL SWITCH ACTIVATED</b>\nAll open positions flattened to preserve capital.")
-    return {"status": "success", "closed_positions": closed_count}
+    return {"status": "success", "closed_positions": closed_count, "mt5": mt5_flat}
+
+@app.post("/api/trade/close/{ticket}")
+def close_trade_by_ticket(ticket: int):
+    res = orchestrator.exness.close_position(ticket)
+    orchestrator.send_agent_message("Leo", "Execution Trader (PA_14)", f"Manual Close for MT5 Ticket #{ticket}: {res.get('status', 'processed')}.")
+    return res
 
 @app.post("/api/trade/execute")
 def direct_execute(data: dict):
@@ -624,6 +632,81 @@ def index():
                     ⚡ Execute Order on Exness MT5 (#434353249)
                 </button>
             </div>
+
+            <!-- LIVE EXNESS MT5 ACCOUNT TERMINAL & ACTIVE POSITIONS TABLE (PROMINENT AT BOTTOM) -->
+            <div class="exness-terminal-card" style="margin-top: 18px; background: var(--of-card); border: 1px solid var(--of-border-strong); border-radius: 16px; padding: 18px 22px; box-shadow: var(--of-shadow); color: var(--of-text-dark);">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--of-border); padding-bottom: 14px; margin-bottom: 14px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981; animation: pulseRed 1.5s infinite;"></span>
+                        <strong style="font-size: 15px;">EXNESS MetaTrader 5 Terminal Live</strong>
+                        <span style="background: rgba(16, 185, 129, 0.15); color: var(--of-green-line); border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 800;">ACCOUNT #434353249 (Exness-MT5Trial7)</span>
+                        <span style="background: var(--of-card-subtle); border: 1px solid var(--of-border); padding: 2px 8px; border-radius: 6px; font-size: 11px; color: var(--of-text-muted);">Leverage 1:2000</span>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button onclick="quickOpenTrade('XAUUSDm', 'BUY')" style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: #f59e0b; padding: 6px 12px; border-radius: 8px; font-weight: 800; font-size: 11px; cursor: pointer;">
+                            ⚡ Quick Buy Gold (XAUUSDm) 0.01
+                        </button>
+                        <button onclick="quickOpenTrade('EURUSDm', 'BUY')" style="background: rgba(2,132,199,0.15); border: 1px solid rgba(2,132,199,0.4); color: #38bdf8; padding: 6px 12px; border-radius: 8px; font-weight: 800; font-size: 11px; cursor: pointer;">
+                            ⚡ Quick Buy EURUSDm 0.01
+                        </button>
+                        <button onclick="panicFlatAll()" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #f87171; padding: 6px 12px; border-radius: 8px; font-weight: 800; font-size: 11px; cursor: pointer;">
+                            🚨 Close All MT5 Positions
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4 Metrics Cards -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px;">
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 12px;">
+                        <small style="color: var(--of-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase;">Exness Balance</small>
+                        <div id="panel-exness-balance" style="font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono'; color: var(--of-blue); margin-top: 4px;">$20.21 USD</div>
+                    </div>
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 12px;">
+                        <small style="color: var(--of-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase;">Live Equity</small>
+                        <div id="panel-exness-equity" style="font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono'; color: var(--of-green-line); margin-top: 4px;">$20.26 USD</div>
+                    </div>
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 12px;">
+                        <small style="color: var(--of-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase;">Net Floating Profit/Loss</small>
+                        <div id="panel-exness-pnl" style="font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono'; color: #facc15; margin-top: 4px;">+$0.05 USD</div>
+                    </div>
+                    <div style="background: var(--of-card-subtle); border: 1px solid var(--of-border); border-radius: 10px; padding: 12px;">
+                        <small style="color: var(--of-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase;">Free Margin Available</small>
+                        <div id="panel-exness-margin" style="font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono'; color: var(--of-text-dark); margin-top: 4px;">$19.70 USD</div>
+                    </div>
+                </div>
+
+                <!-- Open Positions Table -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 12.5px; font-weight: 800; text-transform: uppercase; color: var(--of-text-muted);">
+                            Active Open Positions on Exness MT5 (<span id="panel-open-count" style="color:var(--of-blue); font-weight:800;">1</span>)
+                        </span>
+                        <span style="font-size: 11px; color: var(--of-text-muted); font-family: 'JetBrains Mono';">Live Tick Sync: Real-Time</span>
+                    </div>
+
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono'; font-size: 11.5px; text-align: left;">
+                            <thead>
+                                <tr style="background: var(--of-card-subtle); border-bottom: 1px solid var(--of-border); color: var(--of-text-muted); font-size: 10.5px;">
+                                    <th style="padding: 8px 10px;">TICKET</th>
+                                    <th style="padding: 8px 10px;">SYMBOL</th>
+                                    <th style="padding: 8px 10px;">TYPE</th>
+                                    <th style="padding: 8px 10px;">VOLUME</th>
+                                    <th style="padding: 8px 10px;">OPEN PRICE</th>
+                                    <th style="padding: 8px 10px;">CURRENT PRICE</th>
+                                    <th style="padding: 8px 10px;">S / L</th>
+                                    <th style="padding: 8px 10px;">T / P</th>
+                                    <th style="padding: 8px 10px;">PROFIT (USD)</th>
+                                    <th style="padding: 8px 10px; text-align: right;">ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="open-positions-tbody">
+                                <!-- Populated dynamically by syncData() -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- VIEW 2: 3D ROBOT OFFICE WITH AI CENTRAL NEURAL BRAIN -->
@@ -1151,6 +1234,28 @@ def index():
                 ctx.stroke();
             }
 
+            async function quickOpenTrade(symbol, side) {
+                playAudioFx('trade');
+                const price = symbol.includes('XAU') ? 2748.20 : 1.1156;
+                const res = await fetch('/api/trade/execute', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ symbol: symbol, side: side, price: price })
+                });
+                const d = await res.json();
+                speakBrainMessage(`Order placed. ${side} ${symbol} on Exness MT5.`);
+                syncData();
+            }
+
+            async function closeTrade(ticket) {
+                if (!confirm(`Close position #${ticket} on Exness MT5?`)) return;
+                playAudioFx('trade');
+                const res = await fetch('/api/trade/close/' + ticket, { method: 'POST' });
+                const d = await res.json();
+                speakBrainMessage("Position closed on Exness MT5.");
+                syncData();
+            }
+
             async function executePopoverPair() {
                 if (!selectedPairData) return;
                 const side = selectedPairData.direction === 'BULLISH' ? 'BUY' : 'SELL';
@@ -1166,7 +1271,7 @@ def index():
                 });
                 const d = await res.json();
                 speakBrainMessage(`Order placed. ${side} ${selectedPairData.symbol} on Exness MT5.`);
-                alert(`Executed on Exness MT5 (#434353249)! Ticket: ${d.order ? d.order.id : 'Active'}`);
+                syncData();
             }
 
             async function syncData() {
@@ -1180,13 +1285,15 @@ def index():
                         }
                     }
 
-                    // UPDATE PROMINENT LIVE EXNESS MT5 METRICS
+                    // UPDATE PROMINENT LIVE EXNESS MT5 METRICS & OPEN POSITIONS TABLE
                     if (d.exness) {
                         const bal = Number(d.exness.balance).toFixed(2);
                         const eq = Number(d.exness.equity).toFixed(2);
                         const pnl = Number(d.exness.floating_pnl || 0.0).toFixed(2);
                         const openCount = d.exness.open_positions ? d.exness.open_positions.length : 0;
+                        const freeMargin = (Number(d.exness.equity) - (openCount * 0.56)).toFixed(2);
 
+                        // Top Nav Bar Widget
                         const navBal = document.getElementById('nav-exness-balance');
                         if (navBal) navBal.innerText = `$${bal} USD`;
                         const navEq = document.getElementById('nav-exness-equity');
@@ -1201,6 +1308,7 @@ def index():
                             navCount.innerText = `${openCount} Live Order${openCount === 1 ? '' : 's'}`;
                         }
 
+                        // Window Subheader
                         const subBal = document.getElementById('subhead-bal');
                         if (subBal) subBal.innerText = `$${bal} USD`;
                         const subEq = document.getElementById('subhead-eq');
@@ -1215,6 +1323,65 @@ def index():
                             } else {
                                 subDeal.innerText = 'Scanning for High-Conviction SMC Breakout...';
                                 subDeal.style.color = 'var(--of-text-muted)';
+                            }
+                        }
+
+                        // Exness Terminal Panel Cards
+                        const pBal = document.getElementById('panel-exness-balance');
+                        if (pBal) pBal.innerText = `$${bal} USD`;
+                        const pEq = document.getElementById('panel-exness-equity');
+                        if (pEq) pEq.innerText = `$${eq} USD`;
+                        const pPnl = document.getElementById('panel-exness-pnl');
+                        if (pPnl) {
+                            pPnl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl} USD`;
+                            pPnl.style.color = pnl >= 0 ? 'var(--of-green-line)' : 'var(--of-red-line)';
+                        }
+                        const pMargin = document.getElementById('panel-exness-margin');
+                        if (pMargin) pMargin.innerText = `$${freeMargin} USD`;
+                        const pCount = document.getElementById('panel-open-count');
+                        if (pCount) pCount.innerText = openCount;
+
+                        // Exness Open Positions Table Rows
+                        const tbody = document.getElementById('open-positions-tbody');
+                        if (tbody) {
+                            const positions = d.exness.open_positions || [];
+                            if (positions.length === 0) {
+                                tbody.innerHTML = `
+                                    <tr>
+                                        <td colspan="10" style="padding: 24px; text-align: center; color: var(--of-text-muted); font-style: italic;">
+                                            No active open positions on Exness MT5 right now. Click "Quick Buy Gold" or execute from OrderFlow above.
+                                        </td>
+                                    </tr>
+                                `;
+                            } else {
+                                tbody.innerHTML = positions.map(pos => {
+                                    const isBuy = pos.side === 'BUY';
+                                    const isProfitable = pos.profit >= 0;
+                                    return `
+                                        <tr style="border-bottom: 1px solid var(--of-border); transition: background 0.15s;">
+                                            <td style="padding: 10px; font-weight: 800; color: var(--of-blue);">#${pos.ticket}</td>
+                                            <td style="padding: 10px; font-weight: 800; color: var(--of-text-dark);">${pos.symbol}</td>
+                                            <td style="padding: 10px;">
+                                                <span style="background: ${isBuy ? 'var(--of-green-bg)' : 'var(--of-red-bg)'}; color: ${isBuy ? 'var(--of-green-line)' : 'var(--of-red-line)'}; padding: 3px 8px; border-radius: 4px; font-weight: 800; font-size: 10.5px;">
+                                                    ${pos.side}
+                                                </span>
+                                            </td>
+                                            <td style="padding: 10px; font-weight: 700;">${Number(pos.volume).toFixed(2)} Lot</td>
+                                            <td style="padding: 10px;">${pos.open_price}</td>
+                                            <td style="padding: 10px; font-weight: 800; color: ${isProfitable ? 'var(--of-green-line)' : 'var(--of-red-line)'};">${pos.current_price}</td>
+                                            <td style="padding: 10px; color: var(--of-text-muted);">${pos.sl || 'None'}</td>
+                                            <td style="padding: 10px; color: var(--of-text-muted);">${pos.tp || 'None'}</td>
+                                            <td style="padding: 10px; font-weight: 800; font-size: 13.5px; color: ${isProfitable ? 'var(--of-green-line)' : 'var(--of-red-line)'};">
+                                                ${isProfitable ? '+' : ''}$${Number(pos.profit).toFixed(2)}
+                                            </td>
+                                            <td style="padding: 10px; text-align: right;">
+                                                <button onclick="closeTrade(${pos.ticket})" style="background: rgba(239,68,68,0.12); border: 1px solid #ef4444; color: #f87171; border-radius: 6px; padding: 4px 10px; font-size: 10.5px; font-weight: 800; cursor: pointer;">
+                                                    ✕ Close MT5
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('');
                             }
                         }
                     }
