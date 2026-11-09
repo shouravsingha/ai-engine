@@ -14,8 +14,9 @@ except ImportError:
     MT5_AVAILABLE = False
 
 class ExnessBridge:
-    def __init__(self):
+    def __init__(self, command_queue=None):
         import os
+        self.command_queue = command_queue if command_queue is not None else []
         self.account_id = os.environ.get("MT5_ACCOUNT", "434353249")
         self.password = os.environ.get("MT5_PASSWORD", "ShouravDemo60@#")
         self.server = os.environ.get("MT5_SERVER", "Exness-MT5Trial7")
@@ -198,7 +199,18 @@ class ExnessBridge:
                 }
 
         if not (MT5_AVAILABLE and self.live_terminal):
-            return {"status": "paper", "ticket": f"EXN-MOCK-{int(datetime.now().timestamp())}", "message": "MT5 terminal not linked"}
+            # Cloud (Render) mode without direct Windows MT5:
+            # Queue order to be dispatched to local Windows MT5 tunnel!
+            self.command_queue.append({
+                "action": "execute",
+                "symbol": symbol,
+                "side": side,
+                "volume": float(volume),
+                "sl": float(sl),
+                "tp": float(tp)
+            })
+            print(f"[TUNNEL DISPATCH] Queued {side} {volume} {symbol} for Windows MT5 terminal!")
+            return {"status": "queued", "ticket": f"TUNNEL-{int(datetime.now().timestamp())}", "message": f"Queued for Windows MT5 terminal"}
 
         try:
             # Map symbol for Exness trial account
@@ -220,7 +232,6 @@ class ExnessBridge:
             min_vol = float(s_info.volume_min) if hasattr(s_info, 'volume_min') else 0.01
             vol_step = float(s_info.volume_step) if hasattr(s_info, 'volume_step') else 0.01
             req_vol = max(float(volume), min_vol)
-            # Round to volume step
             req_vol = round(req_vol, 2)
 
             order_type = mt5.ORDER_TYPE_BUY if side.upper() == "BUY" else mt5.ORDER_TYPE_SELL
@@ -229,17 +240,36 @@ class ExnessBridge:
                 return {"status": "error", "message": f"Could not pull price for {sym}"}
             price = tick_now.ask if side.upper() == "BUY" else tick_now.bid
 
-            # Robust SL and TP calculation avoiding spread invalidation
-            if sl == 0.0:
-                sl_dist = price * 0.008 if ("BTC" in sym or "ETH" in sym or "XAU" in sym) else (150 * s_info.point)
-                sl = price - sl_dist if side.upper() == "BUY" else price + sl_dist
-            if tp == 0.0:
-                tp_dist = price * 0.016 if ("BTC" in sym or "ETH" in sym or "XAU" in sym) else (300 * s_info.point)
-                tp = price + tp_dist if side.upper() == "BUY" else price - tp_dist
+            # Robust SL and TP calculation avoiding spread & stop level invalidation
+            point = s_info.point
+            stop_level = max(getattr(s_info, 'trade_stops_level', 10), 10) * point
+            spread = max(getattr(s_info, 'spread', 10), 10) * point
+            min_dist = max(stop_level * 1.5, spread * 2.0, price * 0.003)
 
             digits = s_info.digits if hasattr(s_info, 'digits') else 2
+            if side.upper() == "BUY":
+                if sl == 0.0 or sl >= price or (price - sl) < min_dist:
+                    sl = price - (min_dist * 2.0)
+                if tp == 0.0 or tp <= price or (tp - price) < min_dist:
+                    tp = price + (min_dist * 4.0)
+            else:
+                if sl == 0.0 or sl <= price or (sl - price) < min_dist:
+                    sl = price + (min_dist * 2.0)
+                if tp == 0.0 or tp >= price or (price - tp) < min_dist:
+                    tp = price - (min_dist * 4.0)
+
             sl = round(float(sl), digits)
             tp = round(float(tp), digits)
+
+            # Determine supported filling mode (Exness supports IOC or FOK)
+            filling = mt5.ORDER_FILLING_IOC
+            if hasattr(s_info, 'filling_mode'):
+                if (s_info.filling_mode & 2):
+                    filling = mt5.ORDER_FILLING_IOC
+                elif (s_info.filling_mode & 1):
+                    filling = mt5.ORDER_FILLING_FOK
+                else:
+                    filling = mt5.ORDER_FILLING_RETURN
 
             req = {
                 "action": mt5.TRADE_ACTION_DEAL,
@@ -249,13 +279,20 @@ class ExnessBridge:
                 "price": price,
                 "sl": sl,
                 "tp": tp,
-                "deviation": 20,
+                "deviation": 25,
                 "magic": 202611,
                 "comment": "TradingAI Live Execution",
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
+                "type_filling": filling,
             }
             res = mt5.order_send(req)
+
+            # If rejected with unsupported filling mode (retcode 10030), retry with alternative
+            if res and res.retcode == 10030:
+                alt_filling = mt5.ORDER_FILLING_FOK if filling == mt5.ORDER_FILLING_IOC else mt5.ORDER_FILLING_IOC
+                req["type_filling"] = alt_filling
+                res = mt5.order_send(req)
+
             if res and res.retcode == mt5.TRADE_RETCODE_DONE:
                 self.refresh_balance()
                 return {
@@ -264,9 +301,9 @@ class ExnessBridge:
                     "deal": res.deal,
                     "symbol": sym,
                     "side": side,
-                    "volume": volume,
+                    "volume": req_vol,
                     "price": res.price,
-                    "message": f"Successfully executed {side} {volume} {sym} on Exness MT5 (Ticket #{res.order})"
+                    "message": f"Successfully executed {side} {req_vol} {sym} on Exness MT5 (Ticket #{res.order})"
                 }
             else:
                 return {

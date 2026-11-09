@@ -36,7 +36,8 @@ class MasterOrchestrator:
         self.fib = FibonacciEngine()
         self.risk = RiskManager(risk_percent=1.0, min_rrr=2.5)
         self.account = DemoAccount(initial_capital=50000.0)
-        self.exness = ExnessBridge()
+        self.cloud_command_queue = []
+        self.exness = ExnessBridge(command_queue=self.cloud_command_queue)
         self.branding = BrandingEngine()
         self.webhooks = SocialWebhookDispatcher()
         
@@ -150,19 +151,23 @@ class MasterOrchestrator:
                             # 2. REAL EXECUTION ON EXNESS MT5
                             mt5_res = self.exness.execute_live_order(symbol_exec, "BUY", volume=vol, sl=sl, tp=tp)
                             
-                            # 3. Log internal order
-                            order = self.account.open_trade(trade_plan, symbol=symbol_exec)
-                            ticket_no = mt5_res.get("ticket", order["id"])
-                            order["mt5_ticket"] = ticket_no
+                            if mt5_res.get("status") in ("success", "queued"):
+                                # 3. Log internal order
+                                order = self.account.open_trade(trade_plan, symbol=symbol_exec)
+                                ticket_no = mt5_res.get("ticket", order["id"])
+                                order["mt5_ticket"] = ticket_no
 
-                            asset_title = ticker["symbol"]
-                            self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} trade verified. 100% compliant with institutional rules.")
-                            self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ORDERFLOW DISPLACEMENT: High volume absorption on {asset_title}!")
-                            self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} filled 0.618 Golden Pocket at ${entry:,.2f} in Discount Zone.")
-                            self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED on Exness MT5! Ticket #{ticket_no} active.")
+                                asset_title = ticker["symbol"]
+                                self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} trade verified. 100% compliant with institutional rules.")
+                                self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ORDERFLOW DISPLACEMENT: High volume absorption on {asset_title}!")
+                                self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} filled 0.618 Golden Pocket at ${entry:,.2f} in Discount Zone.")
+                                self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED on Exness MT5! Ticket #{ticket_no} active.")
 
-                            self.telegram.send_trade_signal(order, asset=asset_title)
-                            self.webhooks.broadcast_trade(order, asset=asset_title)
+                                self.telegram.send_trade_signal(order, asset=asset_title)
+                                self.webhooks.broadcast_trade(order, asset=asset_title)
+                            else:
+                                fail_reason = mt5_res.get('comment') or mt5_res.get('message') or 'Rejected'
+                                self.log(f"⚠️ Trade Execution Failed for {symbol_exec}: {fail_reason}")
 
         self.multi_market_matrix = matrix
 

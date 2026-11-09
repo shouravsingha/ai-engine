@@ -8,7 +8,7 @@ from app.core.orchestrator import MasterOrchestrator
 
 app = FastAPI(title="TradingAI · Real-Time Animated OrderFlow & 3D Office with AI Brain")
 orchestrator = MasterOrchestrator()
-cloud_command_queue = []
+cloud_command_queue = orchestrator.cloud_command_queue
 
 from app.trading.exness_bridge import start_cloud_tunnel_daemon
 
