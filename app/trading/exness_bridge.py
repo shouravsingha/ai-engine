@@ -15,8 +15,11 @@ except ImportError:
 
 class ExnessBridge:
     def __init__(self):
-        self.account_id = "434353249"
-        self.server = "Exness-MT5Trial7"
+        import os
+        self.account_id = os.environ.get("MT5_ACCOUNT", "434353249")
+        self.password = os.environ.get("MT5_PASSWORD", "ShouravDemo60@#")
+        self.server = os.environ.get("MT5_SERVER", "Exness-MT5Trial7")
+        self.path = os.environ.get("MT5_PATH", r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe")
         self.balance = 20.21
         self.equity = 20.21
         self.currency = "USD"
@@ -54,8 +57,23 @@ class ExnessBridge:
         """Attempts real connection to local MetaTrader 5 Exness terminal."""
         if MT5_AVAILABLE:
             try:
-                # Initialize or verify existing connection
+                # 1. First try attaching to currently running MT5 instance
                 initialized = mt5.initialize()
+                
+                # 2. If not initialized, try explicitly with path and login credentials
+                if not initialized:
+                    try:
+                        acc_id_int = int(self.account_id)
+                        initialized = mt5.initialize(
+                            path=self.path,
+                            login=acc_id_int,
+                            password=self.password,
+                            server=self.server,
+                            timeout=15000
+                        )
+                    except Exception as e:
+                        print(f"MT5 Explicit Init Note: {e}")
+
                 if initialized:
                     acc_info = mt5.account_info()
                     if acc_info:
