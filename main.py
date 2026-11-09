@@ -73,6 +73,19 @@ def voice_chat(data: VoiceInput):
             if not sym or sym.lower() in pos.get("symbol", "").lower():
                 orchestrator.exness.modify_position_sl_tp(pos.get("ticket"), sl=pos.get("open_price"), tp=pos.get("tp"))
                 orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ Voice command: Moved SL to break-even on {pos.get('symbol')} #{pos.get('ticket')}")
+    elif res.get("action") == "trailing":
+        for pos in ex_status.get("open_positions", []):
+            profit = float(pos.get("profit", 0.0))
+            if profit > 0:
+                side = pos.get("side", "BUY")
+                curr = float(pos.get("current_price", 0.0))
+                open_p = float(pos.get("open_price", 0.0))
+                trail_sl = round(open_p + (curr - open_p) * 0.5, 4) if side == "BUY" else round(open_p - (open_p - curr) * 0.5, 4)
+                orchestrator.exness.modify_position_sl_tp(pos.get("ticket"), sl=trail_sl, tp=pos.get("tp"))
+                orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"📈 Trailing stop locked on {pos.get('symbol')} at {trail_sl}")
+    elif res.get("action") == "quick_buy_gold":
+        orchestrator.exness.execute_live_order("XAUUSDm", "BUY", 0.01)
+        orchestrator.send_agent_message("AI Brain", "Neural Overseer", "⚡ Voice command: Executed 0.01 Lot BUY on Gold (XAUUSDm)")
 
     orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"🗣️ {res['reply_text']}")
     return JSONResponse({
@@ -555,7 +568,7 @@ def index():
                 padding: 12px 18px; z-index: 20; display: flex; align-items: center; gap: 14px;
             }
             .dock-3d {
-                position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+                position: absolute; bottom: 84px; left: 50%; transform: translateX(-50%);
                 background: rgba(9, 13, 23, 0.9); backdrop-filter: blur(14px);
                 border: 1px solid #1e293b; border-radius: 30px; padding: 6px 12px; display: flex; gap: 6px; z-index: 10;
             }
@@ -578,12 +591,32 @@ def index():
                 .of-histogram-col, .of-cards-col {
                     display: none;
                 }
+                .dock-3d {
+                    bottom: 82px;
+                }
             }
 
             @media (max-width: 768px) {
                 body, html {
                     overflow-x: hidden;
                     width: 100%;
+                }
+                #integrated-voice-dock {
+                    bottom: 8px !important;
+                    padding: 8px 10px !important;
+                    border-radius: 14px !important;
+                    width: calc(100% - 16px) !important;
+                }
+                .voice-chips-row {
+                    display: none !important;
+                }
+                #dock-text-input {
+                    width: 90px !important;
+                }
+                .dock-3d {
+                    bottom: 72px !important;
+                    overflow-x: auto;
+                    max-width: 95%;
                 }
                 .top-nav-bar {
                     padding: 8px 10px;
@@ -889,8 +922,8 @@ def index():
 
             <!-- Sound & Voice Toggles + 24/7 Cloud Bot + Exness Status -->
             <div class="nav-toggles-box" style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
-                <button onclick="openVoiceModal()" style="background: linear-gradient(135deg, #ec4899, #8b5cf6); border: none; color: #fff; padding: 5px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 0 10px rgba(236,72,153,0.35);">
-                    🎙️ Voice Chat with AI Brain
+                <button onclick="toggleVoiceAssistant()" id="top-voice-trigger-btn" style="background: linear-gradient(135deg, #ec4899, #8b5cf6); border: none; color: #fff; padding: 5px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 0 10px rgba(236,72,153,0.35);">
+                    🎙️ Talk to Nano-Particle Brain
                 </button>
                 <button onclick="openCloudModal()" style="background: rgba(14, 165, 233, 0.15); border: 1px solid #0ea5e9; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                     ☁️ 24/7 Cloud Bot
@@ -1218,67 +1251,74 @@ def index():
                 </div>
             </div>
 
-        <!-- REAL-TIME 2-WAY VOICE DIRECTIVE MODAL (BENGALI & ENGLISH) -->
-        <div id="voice-chat-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(6,8,16,0.82); backdrop-filter:blur(10px); z-index:10001; align-items:center; justify-content:center; padding:16px;">
-            <div style="background:var(--of-card); border:1px solid rgba(236,72,153,0.4); border-radius:20px; max-width:540px; width:100%; padding:24px; box-shadow:0 25px 70px rgba(236,72,153,0.25); font-family:'Plus Jakarta Sans',sans-serif; color:var(--of-text-dark); position:relative;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid var(--of-border); padding-bottom:12px;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <div style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #ec4899, #8b5cf6); display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 0 12px rgba(236,72,153,0.6);">🎙️</div>
-                        <div>
-                            <h3 style="margin:0; font-size:16px; font-weight:800; color:var(--of-text-dark);">AI Central Brain Voice Assistant</h3>
-                            <small style="color:var(--of-text-muted); font-size:11px;">2-Way Voice Chat in Bengali / Banglish & English</small>
+        <!-- INTEGRATED FUTURISTIC VOICE ASSISTANT DOCK (NON-INTRUSIVE & FULLY RESPONSIVE) -->
+        <div id="integrated-voice-dock" style="position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:9999; max-width:960px; width:calc(100% - 24px); background:rgba(10,14,26,0.94); backdrop-filter:blur(16px); border:1px solid rgba(236,72,153,0.45); border-radius:18px; padding:10px 16px; box-shadow:0 12px 40px rgba(0,0,0,0.65), 0 0 25px rgba(236,72,153,0.22); font-family:'Plus Jakarta Sans',sans-serif; color:var(--of-text-dark); transition:all 0.25s ease;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                
+                <!-- Left: Voice Orb & Audio Equalizer Visualizer -->
+                <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:240px;">
+                    <div id="voice-dock-orb" onclick="toggleVoiceAssistant()" title="Tap to talk with 3D Nano-Particle Brain" style="width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg, #ec4899, #8b5cf6); display:flex; align-items:center; justify-content:center; font-size:20px; cursor:pointer; box-shadow:0 0 16px rgba(236,72,153,0.6); transition:transform 0.2s, box-shadow 0.2s; user-select:none; flex-shrink:0;">
+                        <span id="voice-orb-icon">🎙️</span>
+                    </div>
+
+                    <!-- Live Equalizer Bars -->
+                    <div id="voice-eq-bars" style="display:flex; align-items:center; gap:3px; height:20px; flex-shrink:0;">
+                        <span class="eq-bar" style="width:3px; height:6px; background:#ec4899; border-radius:2px; transition:height 0.15s;"></span>
+                        <span class="eq-bar" style="width:3px; height:14px; background:#8b5cf6; border-radius:2px; transition:height 0.15s;"></span>
+                        <span class="eq-bar" style="width:3px; height:8px; background:#38bdf8; border-radius:2px; transition:height 0.15s;"></span>
+                        <span class="eq-bar" style="width:3px; height:18px; background:#10b981; border-radius:2px; transition:height 0.15s;"></span>
+                        <span class="eq-bar" style="width:3px; height:10px; background:#ec4899; border-radius:2px; transition:height 0.15s;"></span>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; overflow:hidden;">
+                        <span id="voice-status-pill" style="font-size:10px; font-weight:800; color:#ec4899; text-transform:uppercase; letter-spacing:0.5px;">NANO-PARTICLE BRAIN READY</span>
+                        <div id="voice-dock-subtitle" style="font-size:12px; font-weight:600; color:var(--of-text-dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                            Tap mic to speak or ask: "EURUSD status", "Gold analysis dao", "Breakeven koro"
                         </div>
                     </div>
-                    <button onclick="closeVoiceModal()" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--of-text-muted);">✕</button>
                 </div>
 
-                <!-- Voice Status Visualizer -->
-                <div style="background:var(--of-card-subtle); border:1px solid var(--of-border); border-radius:14px; padding:16px; text-align:center; margin-bottom:14px;">
-                    <div id="voice-pulse-ring" style="width:70px; height:70px; border-radius:50%; background:linear-gradient(135deg, #ec4899, #8b5cf6); margin:0 auto 12px; display:flex; align-items:center; justify-content:center; font-size:30px; cursor:pointer; box-shadow:0 0 20px rgba(236,72,153,0.4); transition:transform 0.2s;" onclick="toggleDeviceListening()">
-                        <span id="voice-mic-icon">🎙️</span>
+                <!-- Right: Quick Action Chips & Text Directive Input -->
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-left:auto;">
+                    <div class="voice-chips-row" style="display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; max-width:100%;">
+                        <button onclick="sendQuickVoicePrompt('account status bolo')" style="background:rgba(56,189,248,0.12); border:1px solid #38bdf8; color:#38bdf8; padding:4px 8px; border-radius:6px; font-size:10.5px; font-weight:700; cursor:pointer; white-space:nowrap;">📊 Status</button>
+                        <button onclick="sendQuickVoicePrompt('EURUSD break-even koro')" style="background:rgba(236,72,153,0.12); border:1px solid #ec4899; color:#ec4899; padding:4px 8px; border-radius:6px; font-size:10.5px; font-weight:700; cursor:pointer; white-space:nowrap;">🛡️ Break-Even</button>
+                        <button onclick="sendQuickVoicePrompt('trailing stop lock koro')" style="background:rgba(16,185,129,0.12); border:1px solid #10b981; color:#10b981; padding:4px 8px; border-radius:6px; font-size:10.5px; font-weight:700; cursor:pointer; white-space:nowrap;">📈 Trailing</button>
+                        <button onclick="sendQuickVoicePrompt('gold market obosta kemon')" style="background:rgba(245,158,11,0.12); border:1px solid #f59e0b; color:#f59e0b; padding:4px 8px; border-radius:6px; font-size:10.5px; font-weight:700; cursor:pointer; white-space:nowrap;">⚡ Gold</button>
+                        <button onclick="sendQuickVoicePrompt('kemon acho brother')" style="background:rgba(168,85,247,0.12); border:1px solid #a855f7; color:#a855f7; padding:4px 8px; border-radius:6px; font-size:10.5px; font-weight:700; cursor:pointer; white-space:nowrap;">💬 Kemon Acho?</button>
                     </div>
-                    <div id="voice-status-label" style="font-size:13px; font-weight:800; color:var(--of-blue); margin-bottom:4px;">Tap Mic to Speak with AI Brain</div>
-                    <div style="font-size:11px; color:var(--of-text-muted);">Supports Bengali ("EURUSD breakeven koro", "account status bolo") and English</div>
-                </div>
 
-                <!-- Speech Transcript / Dialog Log -->
-                <div id="voice-dialog-log" style="height:140px; overflow-y:auto; background:rgba(0,0,0,0.25); border:1px solid var(--of-border); border-radius:12px; padding:12px; font-size:12px; margin-bottom:14px; display:flex; flex-direction:column; gap:8px;">
-                    <div style="color:var(--of-text-muted); text-align:center; font-style:italic; margin:auto 0;">
-                        Brain is ready. Tap the microphone or click a quick voice directive below.
+                    <!-- Clean text input for silent mode / mobile fallback -->
+                    <div style="display:flex; align-items:center; background:var(--of-card-subtle); border:1px solid var(--of-border); border-radius:8px; padding:2px 6px;">
+                        <input id="dock-text-input" type="text" placeholder="Ask question..." style="background:transparent; border:none; outline:none; font-size:11.5px; color:var(--of-text-dark); width:110px;" onkeypress="if(event.key==='Enter') sendDockTextDirective()">
+                        <button onclick="sendDockTextDirective()" style="background:none; border:none; color:var(--of-blue); font-size:13px; cursor:pointer; padding:2px;">➤</button>
                     </div>
-                </div>
-
-                <!-- Text fallback input -->
-                <div style="display:flex; gap:8px; margin-bottom:14px;">
-                    <input id="voice-text-fallback" type="text" placeholder="Or type directive (e.g. breakeven, stats, rest)..." style="flex:1; background:var(--of-card-subtle); border:1px solid var(--of-border); border-radius:8px; padding:8px 12px; font-size:12px; color:var(--of-text-dark); outline:none;" onkeypress="if(event.key==='Enter') sendTextDirective()">
-                    <button onclick="sendTextDirective()" style="background:#0284c7; color:#fff; border:none; border-radius:8px; padding:8px 14px; font-size:12px; font-weight:800; cursor:pointer;">Send</button>
-                </div>
-
-                <!-- Quick Directive Presets -->
-                <div style="font-size:10.5px; font-weight:700; color:var(--of-text-muted); margin-bottom:6px; text-transform:uppercase;">Quick Voice Commands:</div>
-                <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                    <button onclick="sendQuickVoicePrompt('EURUSD break-even koro')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:var(--of-blue); padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">🛡️ Break-Even EURUSD</button>
-                    <button onclick="sendQuickVoicePrompt('trailing stop lock koro')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:#10b981; padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">📈 Trail Profit</button>
-                    <button onclick="sendQuickVoicePrompt('account status bolo')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:#f59e0b; padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">📊 Account Status</button>
-                    <button onclick="sendQuickVoicePrompt('brain rest energy ki')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:#ec4899; padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">🧠 Rest Energy Cycle</button>
-                    <button onclick="sendQuickVoicePrompt('market obosta kemon')" style="background:var(--of-card-subtle); border:1px solid var(--of-border); color:var(--of-text-muted); padding:5px 9px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">🌐 Market Sentiment</button>
                 </div>
             </div>
-        </div>
-
-        <!-- FLOATING VOICE DIRECTIVE MIC BUTTON (BOTTOM RIGHT) -->
-        <div id="voice-floating-trigger" onclick="openVoiceModal()" title="Voice Chat with AI Central Brain" style="position:fixed; bottom:24px; right:24px; z-index:9999; width:54px; height:54px; border-radius:50%; background:linear-gradient(135deg, #ec4899, #8b5cf6); box-shadow:0 8px 25px rgba(236,72,153,0.5); display:flex; align-items:center; justify-content:center; font-size:24px; cursor:pointer; border:2px solid rgba(255,255,255,0.3); transition:transform 0.2s, box-shadow 0.2s;">
-            🎙️
         </div>
 
         <!-- VIEW 2: 3D ROBOT OFFICE WITH AI CENTRAL NEURAL BRAIN -->
         <div id="view-3d-floor">
             <div id="canvas-3d-wrap">
+                <!-- HOLOGRAPHIC 3D NANO-PARTICLE FACE SPEECH BUBBLE -->
+                <div id="nano-face-speech-bubble" style="display:none; position:absolute; top:24px; left:50%; transform:translateX(-50%); max-width:92%; width:540px; background:rgba(6,8,16,0.92); border:1px solid rgba(236,72,153,0.55); border-radius:18px; padding:14px 20px; box-shadow:0 12px 45px rgba(236,72,153,0.35); backdrop-filter:blur(12px); z-index:50; pointer-events:auto; font-family:'Plus Jakarta Sans',sans-serif;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="width:10px; height:10px; border-radius:50%; background:#ec4899; box-shadow:0 0 12px #ec4899; animation:pulseRed 1.2s infinite;"></span>
+                            <strong style="color:#ec4899; font-size:12px; letter-spacing:0.5px;">HOLOGRAPHIC NANO-PARTICLE BRAIN</strong>
+                        </div>
+                        <button onclick="document.getElementById('nano-face-speech-bubble').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:14px; cursor:pointer;">✕</button>
+                    </div>
+                    <div id="nano-speech-text" style="color:#f1f5f9; font-size:13px; line-height:1.5; font-weight:500;">
+                        ...
+                    </div>
+                </div>
+
                 <div class="brain-hud">
                     <div style="width: 14px; height: 14px; border-radius: 50%; background: #ec4899; box-shadow: 0 0 15px #ec4899;"></div>
                     <div>
-                        <div style="font-size: 12px; font-weight: 800; color: #ec4899;">AI CENTRAL NEURAL BRAIN</div>
-                        <small style="color: #94a3b8;">Supervising 7 Robot Workers · 19 Mistakes Prevented · IQ 185</small>
+                        <div style="font-size: 12px; font-weight: 800; color: #ec4899;">AI CENTRAL NANO-PARTICLE BRAIN</div>
+                        <small style="color: #94a3b8;">Supervising 7 Robot Workers · Nano-Particle Humanoid Matrix · IQ 185</small>
                     </div>
                 </div>
                 <canvas id="webgl-canvas"></canvas>
@@ -2187,77 +2227,32 @@ def index():
                 }
             }
 
-            // --- 2-WAY VOICE CHAT WITH AI CENTRAL BRAIN ---
+            // --- INTEGRATED VOICE ASSISTANT & 3D NANO-FACE SPEECH CONTROLLER ---
             let voiceRecognition = null;
             let isListening = false;
+            let isBrainSpeaking = false;
+            let isBrainListening = false;
+            let voiceMuted = false;
 
-            function openVoiceModal() {
-                const modal = document.getElementById('voice-chat-modal');
-                if (modal) modal.style.display = 'flex';
-            }
-
-            function closeVoiceModal() {
-                const modal = document.getElementById('voice-chat-modal');
-                if (modal) modal.style.display = 'none';
-                if (voiceRecognition && isListening) {
-                    voiceRecognition.stop();
-                    isListening = false;
+            function toggleVoiceAssistant() {
+                // Unlock mobile speech synthesis audio context
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.resume();
                 }
-                updateVoiceStatusUI('idle');
-            }
 
-            function updateVoiceStatusUI(state) {
-                const ring = document.getElementById('voice-pulse-ring');
-                const label = document.getElementById('voice-status-label');
-                const mic = document.getElementById('voice-mic-icon');
-                if (!label) return;
-
-                if (state === 'listening') {
-                    if (ring) {
-                        ring.style.animation = 'pulseRed 1.2s infinite';
-                        ring.style.background = 'linear-gradient(135deg, #ef4444, #ec4899)';
-                    }
-                    if (mic) mic.innerText = '🔴';
-                    label.innerText = 'Listening... Speak in Bengali or English';
-                    label.style.color = '#ec4899';
-                } else if (state === 'thinking') {
-                    if (ring) {
-                        ring.style.animation = 'pulseRed 1s infinite';
-                        ring.style.background = 'linear-gradient(135deg, #8b5cf6, #3b82f6)';
-                    }
-                    if (mic) mic.innerText = '🧠';
-                    label.innerText = 'AI Brain Thinking & Analyzing...';
-                    label.style.color = '#38bdf8';
-                } else if (state === 'speaking') {
-                    if (ring) {
-                        ring.style.animation = 'none';
-                        ring.style.background = 'linear-gradient(135deg, #10b981, #06b6d4)';
-                    }
-                    if (mic) mic.innerText = '🔊';
-                    label.innerText = 'AI Brain is Speaking Aloud...';
-                    label.style.color = '#10b981';
-                } else {
-                    if (ring) {
-                        ring.style.animation = 'none';
-                        ring.style.background = 'linear-gradient(135deg, #ec4899, #8b5cf6)';
-                    }
-                    if (mic) mic.innerText = '🎙️';
-                    label.innerText = 'Tap Mic to Speak with AI Brain';
-                    label.style.color = 'var(--of-blue)';
-                }
-            }
-
-            function toggleDeviceListening() {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SpeechRecognition) {
-                    appendVoiceDialog('System', 'Browser Speech Recognition is not supported on this browser. You can type your command in the box below!');
+                    updateIntegratedVoiceDockUI('error', 'Speech recognition not supported in this browser. Please type below.');
                     return;
                 }
 
                 if (isListening) {
-                    if (voiceRecognition) voiceRecognition.stop();
+                    if (voiceRecognition) {
+                        try { voiceRecognition.stop(); } catch(e){}
+                    }
                     isListening = false;
-                    updateVoiceStatusUI('idle');
+                    isBrainListening = false;
+                    updateIntegratedVoiceDockUI('idle', 'Nano-particle brain listening stopped. Tap mic to speak.');
                     return;
                 }
 
@@ -2265,96 +2260,157 @@ def index():
                     voiceRecognition = new SpeechRecognition();
                     voiceRecognition.continuous = false;
                     voiceRecognition.interimResults = false;
-                    voiceRecognition.lang = 'bn-BD';
+                    voiceRecognition.lang = 'bn-BD'; // Support Bengali / Banglish
 
                     voiceRecognition.onstart = () => {
                         isListening = true;
-                        updateVoiceStatusUI('listening');
+                        isBrainListening = true;
+                        updateIntegratedVoiceDockUI('listening', 'Listening... Speak in Bengali or English');
                     };
 
                     voiceRecognition.onresult = (event) => {
                         const transcript = event.results[0][0].transcript;
                         isListening = false;
-                        updateVoiceStatusUI('thinking');
+                        isBrainListening = false;
+                        updateIntegratedVoiceDockUI('thinking', `Analyzing: "${transcript}"`);
                         sendVoiceDirective(transcript);
                     };
 
                     voiceRecognition.onerror = (event) => {
                         console.warn("Speech recognition error:", event.error);
-                        if (voiceRecognition.lang === 'bn-BD') {
+                        if (voiceRecognition && voiceRecognition.lang === 'bn-BD') {
                             voiceRecognition.lang = 'en-US';
                         }
                         isListening = false;
-                        updateVoiceStatusUI('idle');
+                        isBrainListening = false;
+                        updateIntegratedVoiceDockUI('idle', 'Tap mic to speak with Nano-Particle Brain');
                     };
 
                     voiceRecognition.onend = () => {
                         isListening = false;
-                        const label = document.getElementById('voice-status-label');
-                        if (label && label.innerText.startsWith('Listening')) {
-                            updateVoiceStatusUI('idle');
-                        }
+                        isBrainListening = false;
                     };
 
                     voiceRecognition.start();
-                } catch (e) {
-                    console.error("Speech Recognition init error:", e);
-                    appendVoiceDialog('System', 'Microphone access denied or error. Please type your directive below.');
+                } catch(e) {
+                    console.error("SpeechRecognition error:", e);
                     isListening = false;
-                    updateVoiceStatusUI('idle');
+                    isBrainListening = false;
+                    updateIntegratedVoiceDockUI('idle', 'Microphone busy or denied. You can type in the box below.');
                 }
             }
 
-            function appendVoiceDialog(sender, text) {
-                const log = document.getElementById('voice-dialog-log');
-                if (!log) return;
-                const isUser = sender === 'You';
-                const msgDiv = document.createElement('div');
-                msgDiv.style.display = 'flex';
-                msgDiv.style.justifyContent = isUser ? 'flex-end' : 'flex-start';
-                msgDiv.innerHTML = `
-                    <div style="max-width: 85%; padding: 8px 12px; border-radius: 12px; font-size: 11.5px; line-height: 1.4; ${isUser ? 'background: #0284c7; color: #fff;' : 'background: var(--of-card-subtle); border: 1px solid var(--of-border); color: var(--of-text-dark);'}">
-                        <strong>${sender}:</strong> ${text}
-                    </div>
-                `;
-                log.appendChild(msgDiv);
-                log.scrollTop = log.scrollHeight;
+            function updateIntegratedVoiceDockUI(state, text) {
+                const orb = document.getElementById('voice-dock-orb');
+                const orbIcon = document.getElementById('voice-orb-icon');
+                const pill = document.getElementById('voice-status-pill');
+                const sub = document.getElementById('voice-dock-subtitle');
+                const eqBars = document.querySelectorAll('#voice-eq-bars .eq-bar');
+                const speechBubble = document.getElementById('nano-face-speech-bubble');
+                const speechText = document.getElementById('nano-speech-text');
+
+                if (sub && text) sub.innerText = text;
+
+                if (state === 'listening') {
+                    if (orb) {
+                        orb.style.background = 'linear-gradient(135deg, #ef4444, #ec4899)';
+                        orb.style.boxShadow = '0 0 25px rgba(239,68,68,0.85)';
+                        orb.style.transform = 'scale(1.1)';
+                    }
+                    if (orbIcon) orbIcon.innerText = '🔴';
+                    if (pill) {
+                        pill.innerText = 'LISTENING...';
+                        pill.style.color = '#ef4444';
+                    }
+                    eqBars.forEach((b, i) => {
+                        b.style.height = `${8 + (i % 3) * 6}px`;
+                        b.style.background = '#ef4444';
+                    });
+                } else if (state === 'thinking') {
+                    if (orb) {
+                        orb.style.background = 'linear-gradient(135deg, #8b5cf6, #3b82f6)';
+                        orb.style.boxShadow = '0 0 25px rgba(59,130,246,0.85)';
+                        orb.style.transform = 'scale(1.05)';
+                    }
+                    if (orbIcon) orbIcon.innerText = '🧠';
+                    if (pill) {
+                        pill.innerText = 'BRAIN SYNTHESIZING...';
+                        pill.style.color = '#38bdf8';
+                    }
+                    eqBars.forEach((b, i) => {
+                        b.style.height = `${10 + (i % 2) * 8}px`;
+                        b.style.background = '#38bdf8';
+                    });
+                } else if (state === 'speaking') {
+                    if (orb) {
+                        orb.style.background = 'linear-gradient(135deg, #10b981, #06b6d4)';
+                        orb.style.boxShadow = '0 0 25px rgba(16,185,129,0.85)';
+                        orb.style.transform = 'scale(1.1)';
+                    }
+                    if (orbIcon) orbIcon.innerText = '🔊';
+                    if (pill) {
+                        pill.innerText = 'NANO-PARTICLE BRAIN SPEAKING';
+                        pill.style.color = '#10b981';
+                    }
+                    eqBars.forEach((b, i) => {
+                        b.style.height = `${14 + Math.sin(i) * 6}px`;
+                        b.style.background = '#10b981';
+                    });
+                    if (speechBubble && speechText) {
+                        speechText.innerText = text;
+                        speechBubble.style.display = 'block';
+                    }
+                } else {
+                    if (orb) {
+                        orb.style.background = 'linear-gradient(135deg, #ec4899, #8b5cf6)';
+                        orb.style.boxShadow = '0 0 16px rgba(236,72,153,0.6)';
+                        orb.style.transform = 'scale(1.0)';
+                    }
+                    if (orbIcon) orbIcon.innerText = '🎙️';
+                    if (pill) {
+                        pill.innerText = 'NANO-PARTICLE BRAIN READY';
+                        pill.style.color = '#ec4899';
+                    }
+                    eqBars.forEach((b, i) => {
+                        b.style.height = `${4 + i * 2}px`;
+                        b.style.background = '#8b5cf6';
+                    });
+                }
             }
 
             async function sendVoiceDirective(directiveText) {
                 if (!directiveText || !directiveText.trim()) return;
                 const cleanText = directiveText.trim();
-                appendVoiceDialog('You', cleanText);
-                updateVoiceStatusUI('thinking');
+                updateIntegratedVoiceDockUI('thinking', `🧑 You: "${cleanText}"`);
 
                 try {
                     const res = await fetch('/api/voice/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: cleanText })
+                        body: JSON.stringify({ transcript: cleanText, message: cleanText })
                     });
                     const d = await res.json();
                     const reply = d.reply || 'Directive processed by AI Central Brain.';
-                    appendVoiceDialog('AI Brain', reply);
-
-                    // Speak response aloud via SpeechSynthesis
+                    
+                    updateIntegratedVoiceDockUI('speaking', reply);
                     speakVoiceResponse(reply);
 
-                    // Refresh telemetry and metrics
                     syncData();
                     updateAccountMetrics();
                     if (currentTradeTab === 'history') {
                         fetchTradeHistory();
                     }
-                } catch (e) {
-                    appendVoiceDialog('AI Brain', 'Sorry brother, network error while communicating with AI Brain. Please retry.');
-                    updateVoiceStatusUI('idle');
+                } catch(e) {
+                    console.error("Voice chat error:", e);
+                    updateIntegratedVoiceDockUI('idle', 'Network communication issue with AI Brain. Please retry.');
+                    isBrainSpeaking = false;
                 }
             }
 
             function speakVoiceResponse(text) {
-                if (!('speechSynthesis' in window)) {
-                    updateVoiceStatusUI('idle');
+                if (voiceMuted || !('speechSynthesis' in window)) {
+                    isBrainSpeaking = false;
+                    setTimeout(() => updateIntegratedVoiceDockUI('idle', text), 4000);
                     return;
                 }
                 try {
@@ -2362,32 +2418,49 @@ def index():
                     const utterance = new SpeechSynthesisUtterance(text);
                     utterance.rate = 1.05;
                     utterance.pitch = 1.0;
-                    utterance.onstart = () => updateVoiceStatusUI('speaking');
-                    utterance.onend = () => updateVoiceStatusUI('idle');
-                    utterance.onerror = () => updateVoiceStatusUI('idle');
+                    const hasBengali = /[\u0980-\u09FF]/.test(text);
+                    if (hasBengali) {
+                        utterance.lang = 'bn-BD';
+                    } else {
+                        utterance.lang = 'en-US';
+                    }
+
+                    utterance.onstart = () => {
+                        isBrainSpeaking = true;
+                    };
+                    utterance.onend = () => {
+                        isBrainSpeaking = false;
+                        updateIntegratedVoiceDockUI('idle', text);
+                    };
+                    utterance.onerror = () => {
+                        isBrainSpeaking = false;
+                        updateIntegratedVoiceDockUI('idle', text);
+                    };
                     window.speechSynthesis.speak(utterance);
-                } catch (e) {
-                    updateVoiceStatusUI('idle');
+                } catch(e) {
+                    isBrainSpeaking = false;
+                    updateIntegratedVoiceDockUI('idle', text);
                 }
             }
 
             function sendQuickVoicePrompt(promptText) {
-                const input = document.getElementById('voice-text-fallback');
+                const input = document.getElementById('dock-text-input');
                 if (input) input.value = promptText;
                 sendVoiceDirective(promptText);
             }
 
-            function sendTextDirective() {
-                const input = document.getElementById('voice-text-fallback');
+            function sendDockTextDirective() {
+                const input = document.getElementById('dock-text-input');
                 if (!input || !input.value.trim()) return;
                 const text = input.value.trim();
                 input.value = '';
                 sendVoiceDirective(text);
             }
 
-            // 3D Engine with AI Central Neural Brain & 7 Seated Robot Employees
+            // 3D Engine with AI Central Holographic Nano-Particle Humanoid Face & 7 Seated Robots
             let scene, camera, renderer, controls;
             let brainCoreMesh, neuralRings = [], laserBeams = [];
+            let nanoFaceGroup, nanoFacePoints, faceParticleBasePos = [], faceParticleMouthIdxs = [], faceParticleEyeIdxs = [];
 
             function init3D() {
                 const cont = document.getElementById('canvas-3d-wrap');
@@ -2449,16 +2522,48 @@ def index():
                     requestAnimationFrame(loop);
                     controls.update();
 
-                    if (brainCoreMesh) {
-                        brainCoreMesh.rotation.y += 0.015;
-                        brainCoreMesh.rotation.x += 0.008;
+                    const t = Date.now() * 0.003;
+
+                    // Holographic Nano-Particle Face Animation & Talking Lips
+                    if (nanoFacePoints && nanoFaceGroup) {
+                        const posAttr = nanoFacePoints.geometry.attributes.position;
+                        nanoFaceGroup.rotation.y = Math.sin(t * 0.35) * 0.15;
+                        nanoFaceGroup.position.y = 7.5 + Math.sin(t * 0.8) * 0.15;
+
+                        // Dynamic lip opening and acoustic resonance
+                        const mouthOpen = isBrainSpeaking ? (Math.abs(Math.sin(t * 16)) * 0.35 + Math.sin(t * 26) * 0.14) : 0;
+                        const pulseScale = isBrainSpeaking ? (Math.sin(t * 22) * 0.05) : (isBrainListening ? Math.sin(t * 10) * 0.03 : Math.sin(t * 2) * 0.012);
+
+                        for (let i = 0; i < faceParticleMouthIdxs.length; i++) {
+                            const item = faceParticleMouthIdxs[i];
+                            const pIdx = item.idx;
+                            const origY = faceParticleBasePos[pIdx * 3 + 1];
+                            if (item.isLower) {
+                                posAttr.setY(pIdx, origY - mouthOpen * item.factor);
+                            } else {
+                                posAttr.setY(pIdx, origY + (mouthOpen * 0.22) * item.factor);
+                            }
+                        }
+
+                        // Shimmering nano particle stardust oscillation
+                        for (let i = 0; i < faceParticleBasePos.length / 3; i++) {
+                            if (i % 3 === 0) {
+                                const bx = faceParticleBasePos[i * 3];
+                                const bz = faceParticleBasePos[i * 3 + 2];
+                                posAttr.setX(i, bx + Math.sin(t * 2.5 + i) * pulseScale);
+                                posAttr.setZ(i, bz + Math.cos(t * 2.5 + i) * pulseScale);
+                            }
+                        }
+                        posAttr.needsUpdate = true;
+                    }
+
+                    if (neuralRings) {
                         neuralRings.forEach((r, idx) => {
-                            r.rotation.x += 0.02 * (idx + 1);
-                            r.rotation.y += 0.015 * (idx + 1);
+                            r.rotation.x += 0.015 * (idx + 1);
+                            r.rotation.y += 0.012 * (idx + 1);
                         });
                     }
 
-                    const t = Date.now() * 0.003;
                     laserBeams.forEach((beam, idx) => {
                         beam.material.opacity = 0.25 + Math.sin(t + idx) * 0.2;
                     });
@@ -2471,32 +2576,170 @@ def index():
             function createCentralAIBrain(x, y, z) {
                 const brainGroup = new THREE.Group();
                 brainGroup.position.set(x, y, z);
+                nanoFaceGroup = brainGroup;
 
-                const coreGeo = new THREE.IcosahedronGeometry(1.8, 2);
-                const coreMat = new THREE.MeshStandardMaterial({
-                    color: 0xec4899,
-                    emissive: 0xec4899,
-                    emissiveIntensity: 0.8,
-                    wireframe: true
-                });
-                brainCoreMesh = new THREE.Mesh(coreGeo, coreMat);
-                brainGroup.add(brainCoreMesh);
-
-                const innerGeo = new THREE.SphereGeometry(1.1, 16, 16);
-                const innerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                // 1. NEURAL CORE (Glowing Energy Sphere inside the Head)
+                const innerGeo = new THREE.SphereGeometry(0.85, 16, 16);
+                const innerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
                 const inner = new THREE.Mesh(innerGeo, innerMat);
                 brainGroup.add(inner);
 
+                // 2. ORBITAL NEURAL DATA RINGS
                 for (let i = 0; i < 3; i++) {
-                    const ringGeo = new THREE.TorusGeometry(2.6 + (i * 0.4), 0.04, 8, 48);
-                    const ringMat = new THREE.MeshBasicMaterial({ color: i === 0 ? 0x38bdf8 : (i === 1 ? 0x10b981 : 0xec4899) });
+                    const ringGeo = new THREE.TorusGeometry(2.4 + (i * 0.45), 0.035, 8, 54);
+                    const ringMat = new THREE.MeshBasicMaterial({ 
+                        color: i === 0 ? 0x38bdf8 : (i === 1 ? 0x10b981 : 0xec4899),
+                        transparent: true,
+                        opacity: 0.75
+                    });
                     const ring = new THREE.Mesh(ringGeo, ringMat);
                     neuralRings.push(ring);
                     brainGroup.add(ring);
                 }
 
+                // 3. HOLOGRAPHIC NANO-PARTICLE 3D HUMAN FACE (3,200+ Particles)
+                const particleCount = 3200;
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(particleCount * 3);
+                const colors = new Float32Array(particleCount * 3);
+                faceParticleBasePos = [];
+                faceParticleMouthIdxs = [];
+                faceParticleEyeIdxs = [];
+
+                const cyanColor = new THREE.Color(0x38bdf8);
+                const pinkColor = new THREE.Color(0xec4899);
+                const purpleColor = new THREE.Color(0xa855f7);
+                const whiteColor = new THREE.Color(0xffffff);
+
+                let idx = 0;
+
+                // A. Forehead & Cranium Dome (800 particles)
+                for (let i = 0; i < 800; i++) {
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.random() * (Math.PI * 0.45);
+                    const r = 1.65 + (Math.random() - 0.5) * 0.12;
+                    const px = r * Math.sin(phi) * Math.cos(theta);
+                    const py = r * Math.cos(phi) + 0.35;
+                    const pz = r * Math.sin(phi) * Math.sin(theta) * 0.88;
+
+                    positions[idx * 3] = px;
+                    positions[idx * 3 + 1] = py;
+                    positions[idx * 3 + 2] = pz;
+                    faceParticleBasePos.push(px, py, pz);
+
+                    const mix = Math.random();
+                    const col = mix > 0.6 ? pinkColor : (mix > 0.3 ? purpleColor : cyanColor);
+                    colors[idx * 3] = col.r;
+                    colors[idx * 3 + 1] = col.g;
+                    colors[idx * 3 + 2] = col.b;
+                    idx++;
+                }
+
+                // B. Cheekbones, Temples & Jawline Contour (900 particles)
+                for (let i = 0; i < 900; i++) {
+                    const t = Math.random();
+                    const py = 0.5 - t * 1.9;
+                    const taper = 1.0 - (t * 0.55);
+                    const angle = (Math.random() - 0.5) * Math.PI * 0.85;
+                    const px = Math.sin(angle) * (1.35 * taper);
+                    const pz = Math.cos(angle) * (1.1 * taper) + 0.25;
+
+                    positions[idx * 3] = px;
+                    positions[idx * 3 + 1] = py;
+                    positions[idx * 3 + 2] = pz;
+                    faceParticleBasePos.push(px, py, pz);
+
+                    const col = Math.random() > 0.4 ? pinkColor : cyanColor;
+                    colors[idx * 3] = col.r;
+                    colors[idx * 3 + 1] = col.g;
+                    colors[idx * 3 + 2] = col.b;
+                    idx++;
+                }
+
+                // C. Glowing Nano-Particle Eyes (450 particles)
+                for (let side = -1; side <= 1; side += 2) {
+                    const eyeCenterX = side * 0.52;
+                    const eyeCenterY = 0.42;
+                    const eyeCenterZ = 1.08;
+
+                    for (let i = 0; i < 225; i++) {
+                        const rad = Math.random() * 0.28;
+                        const a = Math.random() * Math.PI * 2;
+                        const px = eyeCenterX + Math.cos(a) * rad;
+                        const py = eyeCenterY + Math.sin(a) * (rad * 0.65);
+                        const pz = eyeCenterZ + (Math.random() - 0.5) * 0.08;
+
+                        positions[idx * 3] = px;
+                        positions[idx * 3 + 1] = py;
+                        positions[idx * 3 + 2] = pz;
+                        faceParticleBasePos.push(px, py, pz);
+                        faceParticleEyeIdxs.push(idx);
+
+                        colors[idx * 3] = whiteColor.r;
+                        colors[idx * 3 + 1] = cyanColor.g;
+                        colors[idx * 3 + 2] = cyanColor.b;
+                        idx++;
+                    }
+                }
+
+                // D. Nose Bridge & Tip (350 particles)
+                for (let i = 0; i < 350; i++) {
+                    const t = Math.random();
+                    const py = 0.42 - t * 0.58;
+                    const width = 0.06 + t * 0.18;
+                    const px = (Math.random() - 0.5) * width;
+                    const pz = 1.05 + Math.sin(t * Math.PI) * 0.38;
+
+                    positions[idx * 3] = px;
+                    positions[idx * 3 + 1] = py;
+                    positions[idx * 3 + 2] = pz;
+                    faceParticleBasePos.push(px, py, pz);
+
+                    colors[idx * 3] = cyanColor.r;
+                    colors[idx * 3 + 1] = cyanColor.g;
+                    colors[idx * 3 + 2] = cyanColor.b;
+                    idx++;
+                }
+
+                // E. Dynamic Animated Lips & Mouth (700 particles - moves when talking!)
+                for (let i = 0; i < 700; i++) {
+                    const isLower = i >= 350;
+                    const t = (i % 350) / 350;
+                    const xSpan = (t - 0.5) * 0.82;
+                    const lipCurve = (1.0 - Math.pow((t - 0.5) * 2, 2));
+                    const py = isLower ? (-0.52 - lipCurve * 0.12) : (-0.40 + lipCurve * 0.08);
+                    const pz = 1.02 + lipCurve * 0.18 + (Math.random() - 0.5) * 0.06;
+                    const px = xSpan + (Math.random() - 0.5) * 0.04;
+
+                    positions[idx * 3] = px;
+                    positions[idx * 3 + 1] = py;
+                    positions[idx * 3 + 2] = pz;
+                    faceParticleBasePos.push(px, py, pz);
+                    faceParticleMouthIdxs.push({ idx: idx, isLower: isLower, factor: lipCurve });
+
+                    colors[idx * 3] = pinkColor.r;
+                    colors[idx * 3 + 1] = pinkColor.g * 0.8;
+                    colors[idx * 3 + 2] = pinkColor.b;
+                    idx++;
+                }
+
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                const particleMat = new THREE.PointsMaterial({
+                    size: 0.075,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.9,
+                    blending: THREE.AdditiveBlending
+                });
+
+                nanoFacePoints = new THREE.Points(geometry, particleMat);
+                brainGroup.add(nanoFacePoints);
+
+                // Light pedestal beam
                 const beamGeo = new THREE.CylinderGeometry(0.1, 1.8, 7.5, 16);
-                const beamMat = new THREE.MeshBasicMaterial({ color: 0xec4899, transparent: true, opacity: 0.25 });
+                const beamMat = new THREE.MeshBasicMaterial({ color: 0xec4899, transparent: true, opacity: 0.22 });
                 const beam = new THREE.Mesh(beamGeo, beamMat);
                 beam.position.y = -3.75;
                 brainGroup.add(beam);
