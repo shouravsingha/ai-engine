@@ -467,6 +467,284 @@ def index():
                 padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; cursor: pointer;
             }
             .dock-btn.active, .dock-btn:hover { background: #38bdf8; color: #000; }
+
+            /* ======================================================= */
+            /* ULTRA-RESPONSIVE MOBILE & TABLET STYLING (iOS & Android) */
+            /* ======================================================= */
+            @media (max-width: 1024px) {
+                #view-orderflow {
+                    padding: 12px 14px 24px;
+                }
+                .of-board-grid {
+                    grid-template-columns: 100px 1fr 300px;
+                }
+                .of-histogram-col, .of-cards-col {
+                    display: none;
+                }
+            }
+
+            @media (max-width: 768px) {
+                body, html {
+                    overflow-x: hidden;
+                    width: 100%;
+                }
+                .top-nav-bar {
+                    padding: 8px 10px;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .brand-flow {
+                    font-size: 13.5px;
+                    width: 100%;
+                    justify-content: space-between;
+                }
+                .nav-badge-hide-mobile {
+                    display: none !important;
+                }
+                .tab-switch {
+                    width: 100%;
+                    order: 3;
+                    gap: 6px;
+                }
+                .tab-btn {
+                    flex: 1;
+                    justify-content: center;
+                    padding: 8px 4px;
+                    font-size: 11px;
+                }
+                .nav-risk-box {
+                    width: 100%;
+                    order: 4;
+                    justify-content: space-between;
+                }
+                .nav-exness-card {
+                    width: 100%;
+                    order: 2;
+                    padding: 8px 10px !important;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    justify-content: space-between !important;
+                }
+                .nav-toggles-box {
+                    width: 100%;
+                    order: 5;
+                    justify-content: space-between;
+                    margin-top: 2px;
+                }
+
+                #view-orderflow {
+                    padding: 6px 4px 16px;
+                }
+                .of-window {
+                    border-radius: 12px;
+                }
+                .of-window-head {
+                    padding: 8px 10px;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .of-head-controls {
+                    width: 100%;
+                    justify-content: space-between;
+                }
+                .of-pill-segment {
+                    flex: 1;
+                    justify-content: center;
+                }
+                .of-seg-btn {
+                    flex: 1;
+                    text-align: center;
+                    padding: 4px 6px;
+                    font-size: 10.5px;
+                }
+
+                /* Subhead Mobile Stack */
+                .of-subhead {
+                    flex-direction: column;
+                    align-items: stretch;
+                    gap: 8px;
+                    padding: 10px;
+                }
+                .subhead-row-1 {
+                    flex-wrap: wrap;
+                    gap: 6px 10px;
+                    font-size: 11px;
+                }
+                .subhead-row-2 {
+                    flex-direction: column;
+                    width: 100%;
+                    gap: 6px;
+                }
+                #subhead-deal {
+                    width: 100%;
+                    justify-content: space-between;
+                    box-sizing: border-box;
+                    padding: 6px 10px;
+                    font-size: 11px;
+                }
+                .quick-gold-btn {
+                    width: 100%;
+                    padding: 8px 12px;
+                    font-size: 12px;
+                    justify-content: center;
+                    text-align: center;
+                }
+
+                .of-delta-bar {
+                    padding: 4px 8px;
+                    height: 24px;
+                    overflow-x: auto;
+                }
+
+                /* Mobile Board Stack (River Canvas on top, Tiles below, Cards at bottom) */
+                .of-board-grid {
+                    display: flex;
+                    flex-direction: column;
+                    min-height: auto;
+                    width: 100%;
+                }
+
+                /* Horizontal Sector Carousel on Mobile */
+                .of-axis-col {
+                    border-right: none;
+                    border-bottom: 1px solid var(--of-border);
+                    flex-direction: row;
+                    overflow-x: auto;
+                    padding: 8px 10px;
+                    gap: 6px;
+                    white-space: nowrap;
+                    -webkit-overflow-scrolling: touch;
+                }
+                .axis-mark {
+                    height: auto;
+                    display: inline-flex;
+                    border: none !important;
+                }
+                .axis-mark > span:first-child,
+                .axis-mark > small {
+                    display: none;
+                }
+
+                /* River Canvas area */
+                .of-river-col {
+                    border-right: none;
+                    border-bottom: 1px solid var(--of-border);
+                    width: 100%;
+                }
+                #sankey-river-canvas {
+                    height: 330px !important;
+                    width: 100% !important;
+                }
+                .of-timeline-bar {
+                    height: 32px;
+                    font-size: 9.5px;
+                    padding: 0 8px;
+                    overflow-x: auto;
+                }
+
+                /* Touch-Friendly Tile Clusters */
+                .of-tiles-col {
+                    border-right: none;
+                    border-bottom: 1px solid var(--of-border);
+                    padding: 12px 10px;
+                    width: 100%;
+                    box-sizing: border-box;
+                }
+                .tiles-cluster {
+                    grid-template-columns: repeat(2, 1fr) !important;
+                    gap: 8px;
+                }
+                .tile-unit {
+                    padding: 8px 10px;
+                    border-radius: 9px;
+                }
+                .tile-code {
+                    font-size: 10px;
+                }
+                .tile-pct {
+                    font-size: 12px;
+                }
+                .tile-name {
+                    font-size: 11px;
+                }
+
+                /* Histogram / Absorption on mobile */
+                .of-histogram-col {
+                    display: flex;
+                    flex-direction: row;
+                    overflow-x: auto;
+                    padding: 10px 8px;
+                    border-right: none;
+                    border-bottom: 1px solid var(--of-border);
+                    gap: 12px;
+                }
+                .hist-dual-row {
+                    min-width: 90px;
+                }
+
+                /* Focus Cards on mobile */
+                .of-cards-col {
+                    display: flex;
+                    width: 100%;
+                    padding: 12px 10px;
+                    box-sizing: border-box;
+                }
+                .focus-card {
+                    padding: 12px;
+                }
+
+                /* Mobile Native Bottom Drawer for Popover */
+                #floating-popover {
+                    position: fixed !important;
+                    top: auto !important;
+                    bottom: 0 !important;
+                    left: 0 !important;
+                    right: 0 !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    border-radius: 20px 20px 0 0 !important;
+                    border-left: none !important;
+                    border-right: none !important;
+                    border-bottom: none !important;
+                    box-shadow: 0 -10px 40px rgba(0,0,0,0.6) !important;
+                    max-height: 82vh;
+                    overflow-y: auto;
+                    padding: 16px 14px 28px !important;
+                    z-index: 9999 !important;
+                    transform: translateY(0);
+                    animation: popoverSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+                @keyframes popoverSlideUp {
+                    from { transform: translateY(100%); }
+                    to { transform: translateY(0); }
+                }
+
+                /* 3D Office on mobile */
+                .brain-hud {
+                    top: 8px;
+                    left: 8px;
+                    right: 8px;
+                    padding: 8px 12px;
+                    font-size: 11px;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .dock-3d {
+                    bottom: 12px;
+                    width: calc(100% - 24px);
+                    box-sizing: border-box;
+                    overflow-x: auto;
+                    white-space: nowrap;
+                    padding: 5px 8px;
+                    gap: 4px;
+                    -webkit-overflow-scrolling: touch;
+                }
+                .dock-btn {
+                    padding: 5px 10px;
+                    font-size: 10px;
+                    flex-shrink: 0;
+                }
+            }
         </style>
     </head>
     <body class="theme-light">
@@ -475,8 +753,8 @@ def index():
             <div class="brand-flow">
                 <span class="dot-flow"></span>
                 <span>• OrderFlow <span class="of-flow-serif" style="color: #38bdf8;">by TradingAI</span></span>
-                <span style="background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">FOREX & COMMODITIES</span>
-                <span style="background: rgba(236,72,153,0.15); color: #ec4899; border: 1px solid rgba(236,72,153,0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">🧠 AI CENTRAL BRAIN ACTIVE</span>
+                <span class="nav-badge-hide-mobile" style="background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">FOREX & COMMODITIES</span>
+                <span class="nav-badge-hide-mobile" style="background: rgba(236,72,153,0.15); color: #ec4899; border: 1px solid rgba(236,72,153,0.3); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">🧠 AI CENTRAL BRAIN ACTIVE</span>
             </div>
 
             <!-- View Switcher -->
@@ -486,7 +764,7 @@ def index():
             </div>
 
             <!-- Risk Mode & Emergency Kill Switch -->
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="nav-risk-box" style="display: flex; align-items: center; gap: 8px;">
                 <div style="background: #111726; border: 1px solid #1e293b; border-radius: 8px; padding: 4px 8px; display: flex; align-items: center; gap: 6px; font-size: 11px;">
                     <span style="color: #94a3b8; font-weight: 700;">Risk:</span>
                     <button onclick="setRisk('conservative')" id="risk-btn-cons" style="background: transparent; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer;">0.5%</button>
@@ -499,7 +777,7 @@ def index():
             </div>
 
             <!-- PROMINENT LIVE EXNESS MT5 ACCOUNT WIDGET (FRONT & CENTER) -->
-            <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 10px; padding: 5px 14px; display: flex; align-items: center; gap: 14px; font-family: 'JetBrains Mono'; font-size: 11.5px;">
+            <div class="nav-exness-card" style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 10px; padding: 5px 14px; display: flex; align-items: center; gap: 14px; font-family: 'JetBrains Mono'; font-size: 11.5px;">
                 <span style="color: #10b981; font-weight: 800; display: flex; align-items: center; gap: 5px;">
                     <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulseRed 1.5s infinite;"></span>
                     EXNESS MT5: #434353249
@@ -513,7 +791,7 @@ def index():
             </div>
 
             <!-- Sound & Voice Toggles + Exness Status -->
-            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+            <div class="nav-toggles-box" style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
                 <button id="sound-btn" onclick="toggleSound()" style="background: #111726; border: 1px solid #1e293b; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
                     🔊 Audio: ON
                 </button>
@@ -554,19 +832,19 @@ def index():
 
                 <!-- Subheader Status Line with Live Updating Exness Metrics -->
                 <div class="of-subhead" id="subhead-exness-detail">
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="subhead-row-1" style="display: flex; align-items: center; gap: 8px;">
                         <span style="color: #10b981; font-weight: 800;">● EXNESS MT5 LIVE (#434353249):</span>
                         <span>Balance: <strong style="color: var(--of-blue); font-size: 12px;" id="subhead-bal">$20.21 USD</strong></span>
                         <span>Equity: <strong id="subhead-eq" style="color: var(--of-green-line); font-size: 12px;">$20.33 USD</strong></span>
                         <span>PnL: <strong id="subhead-pnl" style="color: #10b981; font-size: 12px;">+$0.12 USD</strong></span>
                         <span style="color: var(--of-text-muted);">| 12 up · 8 flat · 10 down</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="subhead-row-2" style="display: flex; align-items: center; gap: 8px;">
                         <span id="subhead-deal" style="background: var(--of-card); border: 1px solid var(--of-border); padding: 3px 8px; border-radius: 6px; font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--of-blue); display: flex; align-items: center; gap: 6px;">
                             Active: EURUSDm BUY 0.01 (#5012444923)
                             <button onclick="closeTrade(5012444923)" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444; border-radius: 4px; padding: 1px 5px; font-size: 9px; cursor: pointer;">✕ Close</button>
                         </span>
-                        <button onclick="quickOpenTrade('XAUUSDm', 'BUY')" style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: #f59e0b; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 10px; cursor: pointer;">
+                        <button class="quick-gold-btn" onclick="quickOpenTrade('XAUUSDm', 'BUY')" style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: #f59e0b; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 10px; cursor: pointer;">
                             ⚡ Quick Buy Gold
                         </button>
                     </div>
@@ -1145,14 +1423,23 @@ def index():
                 document.getElementById('pop-resistance').innerText = pair.resistance;
 
                 // Position popover
-                if (elem) {
-                    const rect = elem.getBoundingClientRect();
-                    const winRect = document.querySelector('.of-window').getBoundingClientRect();
-                    pop.style.left = `${Math.min(rect.left - winRect.left - 390, winRect.width - 410)}px`;
-                    pop.style.top = `${Math.max(rect.top - winRect.top - 80, 70)}px`;
+                if (window.innerWidth <= 768) {
+                    pop.style.left = '0px';
+                    pop.style.top = 'auto';
+                    pop.style.bottom = '0px';
+                    pop.style.width = '100%';
                 } else {
-                    pop.style.left = '48%';
-                    pop.style.top = '120px';
+                    pop.style.bottom = 'auto';
+                    pop.style.width = '380px';
+                    if (elem) {
+                        const rect = elem.getBoundingClientRect();
+                        const winRect = document.querySelector('.of-window').getBoundingClientRect();
+                        pop.style.left = `${Math.max(20, Math.min(rect.left - winRect.left - 390, winRect.width - 410))}px`;
+                        pop.style.top = `${Math.max(rect.top - winRect.top - 80, 70)}px`;
+                    } else {
+                        pop.style.left = '48%';
+                        pop.style.top = '120px';
+                    }
                 }
 
                 drawPopoverCandles(pair);
@@ -1553,6 +1840,14 @@ def index():
                 if (canvas) {
                     canvas.width = canvas.clientWidth * window.devicePixelRatio;
                     canvas.height = canvas.clientHeight * window.devicePixelRatio;
+                }
+                if (typeof renderer !== 'undefined' && renderer && typeof camera !== 'undefined' && camera) {
+                    const wrap = document.getElementById('canvas-3d-wrap');
+                    if (wrap && wrap.clientWidth > 0 && wrap.clientHeight > 0) {
+                        camera.aspect = wrap.clientWidth / wrap.clientHeight;
+                        camera.updateProjectionMatrix();
+                        renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+                    }
                 }
             };
         </script>
