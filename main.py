@@ -42,7 +42,7 @@ def get_telemetry():
         "trade_history": orchestrator.journal.get_recent_trades(limit=50),
         "account_stats": orchestrator.journal.get_account_stats(),
         "branding_posts": orchestrator.branding.get_feed(),
-        "telegram_status": {"bot": "@SingAiTradebot", "active": orchestrator.telegram.is_running},
+        "telegram_status": {"bot": "@SingAiTradebot", "active": orchestrator.telegram.is_running, "enabled": orchestrator.telegram.enabled},
         "webhooks": orchestrator.webhooks.webhooks,
         "logs": orchestrator.system_logs
     })
