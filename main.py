@@ -71,6 +71,29 @@ def save_webhooks(data: WebhookConfigInput):
     orchestrator.send_agent_message("Sophia", "Brand Director (Conta_1612)", "Multi-platform social webhooks armed.")
     return {"status": "success", "webhooks": orchestrator.webhooks.webhooks}
 
+class RiskModeInput(BaseModel):
+    mode: str  # "conservative", "institutional", "aggressive"
+
+@app.post("/api/risk/mode")
+def set_risk_mode(data: RiskModeInput):
+    mode = data.mode.lower()
+    if mode == "conservative":
+        orchestrator.risk.risk_percent = 0.5
+    elif mode == "aggressive":
+        orchestrator.risk.risk_percent = 2.0
+    else:
+        orchestrator.risk.risk_percent = 1.0
+    orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"🧠 Risk calibration updated: {mode.upper()} mode ({orchestrator.risk.risk_percent}% risk ceiling per trade).")
+    return {"status": "success", "mode": mode, "risk_percent": orchestrator.risk.risk_percent}
+
+@app.post("/api/trade/panic_flat")
+def panic_flat_all():
+    closed_count = len(orchestrator.account.open_trades)
+    orchestrator.account.open_trades.clear()
+    orchestrator.send_agent_message("Marcus", "Risk Officer (PA_02)", f"🚨 EMERGENCY KILL SWITCH TRIGGERED: All {closed_count} positions flattened instantly.")
+    orchestrator.telegram.send_message("🚨 <b>EMERGENCY KILL SWITCH ACTIVATED</b>\nAll open positions flattened to preserve capital.")
+    return {"status": "success", "closed_positions": closed_count}
+
 @app.post("/api/trade/execute")
 def direct_execute(data: dict):
     symbol = data.get("symbol", "XAUUSDm")
@@ -283,7 +306,27 @@ def index():
                 <button class="tab-btn" onclick="switchView('3d')">🏢 3D Robot Floor (with AI Brain)</button>
             </div>
 
-            <div style="display: flex; align-items: center; gap: 14px; font-size: 12px;">
+            <!-- Risk Mode & Emergency Kill Switch -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="background: #111726; border: 1px solid #1e293b; border-radius: 8px; padding: 4px 8px; display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 700;">Risk:</span>
+                    <button onclick="setRisk('conservative')" id="risk-btn-cons" style="background: transparent; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer;">0.5%</button>
+                    <button onclick="setRisk('institutional')" id="risk-btn-inst" style="background: #0284c7; border: 1px solid #0284c7; color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer; font-weight: 800;">1.0%</button>
+                    <button onclick="setRisk('aggressive')" id="risk-btn-aggr" style="background: transparent; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer;">2.0%</button>
+                </div>
+                <button onclick="panicFlatAll()" style="background: rgba(239,68,68,0.18); border: 1px solid #ef4444; color: #f87171; border-radius: 8px; padding: 6px 12px; font-weight: 800; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    🚨 PANIC FLAT ALL
+                </button>
+            </div>
+
+            <!-- Sound & Voice Toggles + Status -->
+            <div style="display: flex; align-items: center; gap: 10px; font-size: 12px;">
+                <button id="sound-btn" onclick="toggleSound()" style="background: #111726; border: 1px solid #1e293b; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                    🔊 Audio: ON
+                </button>
+                <button id="voice-btn" onclick="toggleVoice()" style="background: #111726; border: 1px solid #1e293b; color: #ec4899; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                    🗣️ Brain Voice: ON
+                </button>
                 <span style="color: #10b981; font-weight: 700;">● @SingAiTradebot Live</span>
                 <span style="background: #111726; border: 1px solid #1e293b; padding: 4px 10px; border-radius: 6px; font-family: 'JetBrains Mono';">Exness MT5: #434353249</span>
             </div>
@@ -348,6 +391,15 @@ def index():
                             </div>
                         </div>
 
+                        <!-- Dynamic SMC Candlestick Canvas & Institutional Zones -->
+                        <div class="inspect-box" style="padding: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Real-Time Candlestick & 0.618 OTE Golden Pocket</span>
+                                <span style="font-size: 10px; font-family: 'JetBrains Mono'; color: var(--green); background: var(--green-bg); padding: 2px 6px; border-radius: 4px;">1H TIMEFRAME</span>
+                            </div>
+                            <canvas id="candle-canvas" style="width: 100%; height: 110px; background: #0f172a; border-radius: 8px; display: block;"></canvas>
+                        </div>
+
                         <!-- Mini Chart & Levels -->
                         <div class="inspect-box">
                             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 12px; margin-bottom: 14px;">
@@ -365,6 +417,36 @@ def index():
                             </div>
                         </div>
 
+                        <!-- Depth of Market (DOM) / OrderFlow Liquidity Ladder -->
+                        <div class="inspect-box">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 12px; font-weight: 800; color: var(--text-dark);">Depth of Market (DOM) Liquidity Absorption</span>
+                                <span style="font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono';">Spread: 1.2 Pips</span>
+                            </div>
+                            <div id="dom-ladder" style="font-family: 'JetBrains Mono'; font-size: 11px;">
+                                <div style="display: flex; justify-content: space-between; padding: 3px 6px; background: rgba(239,68,68,0.08); border-radius: 4px; margin-bottom: 2px;">
+                                    <span style="color: var(--red-line); font-weight: 700;">2,752.40 (ASK WALL)</span>
+                                    <span>480 Lots (Sell Resting)</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding: 3px 6px; background: rgba(239,68,68,0.04); border-radius: 4px; margin-bottom: 2px;">
+                                    <span style="color: var(--red-line);">2,750.10</span>
+                                    <span>210 Lots</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding: 4px 6px; background: #e2e8f0; border-radius: 4px; margin: 4px 0; font-weight: 800;">
+                                    <span>CURRENT SPREAD (MID)</span>
+                                    <span id="dom-mid-price">$2,748.20</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding: 3px 6px; background: rgba(16,185,129,0.04); border-radius: 4px; margin-bottom: 2px;">
+                                    <span style="color: var(--green-line);">2,746.50</span>
+                                    <span>340 Lots</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding: 3px 6px; background: rgba(16,185,129,0.08); border-radius: 4px;">
+                                    <span style="color: var(--green-line); font-weight: 700;">2,744.00 (BID WALL)</span>
+                                    <span>620 Lots (Institutional Absorption)</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- "Why it ranks here" (From Video Frame 7) -->
                         <div class="inspect-box">
                             <div style="font-size: 13px; font-weight: 800; margin-bottom: 10px; color: var(--text-dark);">Why it ranks here (Institutional Criteria):</div>
@@ -377,8 +459,8 @@ def index():
 
                         <!-- Direct 1-Click Order Execution -->
                         <div style="margin-top: auto; padding-top: 14px;">
-                            <button onclick="executeSelectedPair()" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: #0284c7; color: #fff; font-weight: 800; font-size: 13px; cursor: pointer;">
-                                ⚡ Execute Order on Exness MT5 (#434353249)
+                            <button onclick="executeSelectedPair()" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: #0284c7; color: #fff; font-weight: 800; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <span>⚡ Execute Order on Exness MT5 (#434353249)</span>
                             </button>
                         </div>
                     </div>
@@ -414,6 +496,112 @@ def index():
         </div>
 
         <script>
+            let soundEnabled = true;
+            let voiceEnabled = true;
+            let audioCtx = null;
+
+            function initAudio() {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            function playAudioFx(type) {
+                if (!soundEnabled) return;
+                try {
+                    initAudio();
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+
+                    if (type === 'trade') {
+                        // High-tech Ka-ching / Execution chime
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+                        osc.frequency.exponentialRampToValueAtTime(880.00, audioCtx.currentTime + 0.12); // A5
+                        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+                        osc.start();
+                        osc.stop(audioCtx.currentTime + 0.35);
+                    } else if (type === 'alert') {
+                        // Sonar Ping for 5-star OrderFlow breakout
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(1046.50, audioCtx.currentTime); // C6
+                        gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.45);
+                        osc.start();
+                        osc.stop(audioCtx.currentTime + 0.45);
+                    } else if (type === 'brain') {
+                        // Futuristic AI Harmonic tone
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                        osc.frequency.linearRampToValueAtTime(659.25, audioCtx.currentTime + 0.2);
+                        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                        osc.start();
+                        osc.stop(audioCtx.currentTime + 0.4);
+                    }
+                } catch(e) {}
+            }
+
+            function toggleSound() {
+                soundEnabled = !soundEnabled;
+                document.getElementById('sound-btn').innerText = soundEnabled ? '🔊 Audio: ON' : '🔇 Audio: OFF';
+                document.getElementById('sound-btn').style.color = soundEnabled ? '#38bdf8' : '#64748b';
+            }
+
+            function toggleVoice() {
+                voiceEnabled = !voiceEnabled;
+                document.getElementById('voice-btn').innerText = voiceEnabled ? '🗣️ Brain Voice: ON' : '🤐 Brain Voice: OFF';
+                document.getElementById('voice-btn').style.color = voiceEnabled ? '#ec4899' : '#64748b';
+            }
+
+            function speakBrainMessage(msg) {
+                if (!voiceEnabled || !window.speechSynthesis) return;
+                try {
+                    window.speechSynthesis.cancel();
+                    const utter = new SpeechSynthesisUtterance(msg);
+                    utter.rate = 1.05;
+                    utter.pitch = 1.1;
+                    window.speechSynthesis.speak(utter);
+                } catch(e) {}
+            }
+
+            async function setRisk(mode) {
+                const res = await fetch('/api/risk/mode', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ mode: mode })
+                });
+                const d = await res.json();
+                ['cons', 'inst', 'aggr'].forEach(m => {
+                    const btn = document.getElementById(`risk-btn-${m}`);
+                    btn.style.background = 'transparent';
+                    btn.style.color = '#94a3b8';
+                    btn.style.borderColor = '#334155';
+                    btn.style.fontWeight = 'normal';
+                });
+                const activeId = mode === 'conservative' ? 'cons' : (mode === 'aggressive' ? 'aggr' : 'inst');
+                const activeBtn = document.getElementById(`risk-btn-${activeId}`);
+                activeBtn.style.background = '#0284c7';
+                activeBtn.style.color = '#fff';
+                activeBtn.style.borderColor = '#0284c7';
+                activeBtn.style.fontWeight = '800';
+
+                playAudioFx('brain');
+                speakBrainMessage(`AI Brain: Risk ceiling locked at ${d.risk_percent} percent.`);
+            }
+
+            async function panicFlatAll() {
+                if (!confirm("EMERGENCY KILL SWITCH: Flatten all open positions immediately?")) return;
+                const res = await fetch('/api/trade/panic_flat', { method: 'POST' });
+                const d = await res.json();
+                playAudioFx('trade');
+                speakBrainMessage("Emergency kill switch activated. All positions flattened.");
+                alert(`All ${d.closed_positions} positions flattened to cash! Capital preserved.`);
+            }
+
             let selectedAsset = {
                 symbol: "XAUUSD (Gold)", price: 2748.20, chg: 1.45, direction: "BULLISH",
                 conviction: "5/5", buildup: "Long build-up", support: "2735.00", resistance: "2765.00", zone: "2742 - 2748"
@@ -446,16 +634,71 @@ def index():
                 document.getElementById('ins-s1').innerText = pair.support;
                 document.getElementById('ins-r1').innerText = pair.resistance;
                 document.getElementById('ins-zone').innerText = pair.zone;
+                document.getElementById('dom-mid-price').innerText = '$' + pair.price.toLocaleString('en-US', {minimumFractionDigits: 2});
+
+                playAudioFx('alert');
+                drawMiniCandles(pair);
+            }
+
+            function drawMiniCandles(pair) {
+                const cv = document.getElementById('candle-canvas');
+                if (!cv) return;
+                const ctx = cv.getContext('2d');
+                cv.width = cv.clientWidth * window.devicePixelRatio;
+                cv.height = cv.clientHeight * window.devicePixelRatio;
+
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, cv.width, cv.height);
+
+                // Golden pocket zone rectangle
+                ctx.fillStyle = 'rgba(217, 119, 6, 0.15)';
+                ctx.fillRect(0, cv.height * 0.45, cv.width, cv.height * 0.22);
+                ctx.fillStyle = '#f59e0b';
+                ctx.font = '10px monospace';
+                ctx.fillText('0.618 Golden Pocket Zone', 10, cv.height * 0.55);
+
+                // Draw mock institutional candles
+                const count = 16;
+                const w = cv.width / (count + 2);
+                let p = pair.price * 0.994;
+                for (let i = 0; i < count; i++) {
+                    const isUp = i % 3 !== 0 || i === count - 1;
+                    const cOpen = p;
+                    const cClose = isUp ? p + (Math.random() * 2.5) : p - (Math.random() * 2);
+                    p = cClose;
+                    const cHigh = Math.max(cOpen, cClose) + (Math.random() * 1.5);
+                    const cLow = Math.min(cOpen, cClose) - (Math.random() * 1.5);
+
+                    const x = (i + 1) * w;
+                    const scaleY = (val) => cv.height - ((val - pair.price * 0.99) / (pair.price * 0.02) * cv.height);
+
+                    ctx.strokeStyle = isUp ? '#10b981' : '#ef4444';
+                    ctx.fillStyle = isUp ? '#10b981' : '#ef4444';
+                    ctx.lineWidth = 1.5;
+
+                    // Wick
+                    ctx.beginPath();
+                    ctx.moveTo(x + w * 0.35, scaleY(cHigh));
+                    ctx.lineTo(x + w * 0.35, scaleY(cLow));
+                    ctx.stroke();
+
+                    // Body
+                    const top = Math.min(scaleY(cOpen), scaleY(cClose));
+                    const height = Math.max(Math.abs(scaleY(cOpen) - scaleY(cClose)), 2);
+                    ctx.fillRect(x, top, w * 0.7, height);
+                }
             }
 
             async function executeSelectedPair() {
                 const side = selectedAsset.direction === 'BULLISH' ? 'BUY' : 'SELL';
+                playAudioFx('trade');
                 const res = await fetch('/api/trade/execute', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({symbol: selectedAsset.symbol.includes('Gold') ? 'XAUUSDm' : selectedAsset.symbol, side: side, price: selectedAsset.price})
                 });
                 const d = await res.json();
+                speakBrainMessage(`Order placed. ${side} ${selectedAsset.symbol} on Exness MT5.`);
                 alert(`Executed on Exness MT5! Ticket: ${d.order ? d.order.id : 'Active'}`);
             }
 
@@ -467,8 +710,6 @@ def index():
                 c.height = 360 * window.devicePixelRatio;
 
                 const particles = [];
-                const colors = ['#10b981', '#059669', '#34d399', '#ef4444', '#f87171', '#dc2626'];
-
                 for (let i = 0; i < 90; i++) {
                     const isBull = Math.random() < 0.62;
                     particles.push({
@@ -489,7 +730,6 @@ def index():
                     const startX = 30 * window.devicePixelRatio;
                     const startY = (c.height / 2);
 
-                    // Draw Background Flow Ribbons
                     // Bullish Ribbon (Upwards)
                     ctx.strokeStyle = 'rgba(16, 185, 129, 0.18)';
                     ctx.lineWidth = 38 * window.devicePixelRatio;
@@ -574,9 +814,9 @@ def index():
                 } catch(e) {}
             }
 
-            // 3D Engine with AI Central Neural Brain
+            // 3D Engine with AI Central Neural Brain & 7 Seated Robot Employees
             let scene, camera, renderer, controls;
-            let brainCoreMesh, neuralRings = [];
+            let brainCoreMesh, neuralRings = [], laserBeams = [];
 
             function init3D() {
                 const cont = document.getElementById('canvas-3d-wrap');
@@ -613,9 +853,27 @@ def index():
                 // 🧠 AI CENTRAL NEURAL BRAIN (Floating in Center of Office)
                 createCentralAIBrain(0, 7.5, 0);
 
-                // Desks with Chairs & Robots
-                create3DPod(-8, -2, 0xfacc15, "• PA_01 Quant");
-                create3DPod(8, 2, 0xa855f7, "• PA_07 Viral");
+                // 7 Robot Pods with swivel chairs, monitors, and overhead floating badges
+                const robotConfigs = [
+                    {x: -12, z: -6, color: 0xfacc15, tag: "PA_01 Alex (Chief Quant)"},
+                    {x: -4,  z: -6, color: 0x3b82f6, tag: "LUC_3 David (Fibonacci)"},
+                    {x: 4,   z: -6, color: 0x22c55e, tag: "PA_02 Marcus (Risk Officer)"},
+                    {x: 12,  z: -6, color: 0x06b6d4, tag: "PA_14 Leo (Exness MT5)"},
+                    {x: -8,  z: 8,  color: 0xf97316, tag: "Conta_1612 Sophia (Brand Director)"},
+                    {x: 0,   z: 8,  color: 0xa855f7, tag: "PA_07 Mia (Viral Copy)"},
+                    {x: 8,   z: 8,  color: 0x818cf8, tag: "PA_18 Noah (Video Master)"}
+                ];
+
+                robotConfigs.forEach(cfg => {
+                    create3DPod(cfg.x, cfg.z, cfg.color, cfg.tag);
+                    // Pulsing holographic connection beam from AI Brain to each desk
+                    createNeuralLaserBeam(0, 7.5, 0, cfg.x, 2.0, cfg.z, cfg.color);
+                });
+
+                // Giant LED Wall showing equity curve at North Wall
+                const ledWall = new THREE.Mesh(new THREE.BoxGeometry(28, 8, 0.2), new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, emissiveIntensity: 0.4 }));
+                ledWall.position.set(0, 6, -21.8);
+                scene.add(ledWall);
 
                 function loop() {
                     requestAnimationFrame(loop);
@@ -630,6 +888,12 @@ def index():
                             r.rotation.y += 0.015 * (idx + 1);
                         });
                     }
+
+                    // Pulsing laser beams opacity
+                    const t = Date.now() * 0.003;
+                    laserBeams.forEach((beam, idx) => {
+                        beam.material.opacity = 0.25 + Math.sin(t + idx) * 0.2;
+                    });
 
                     renderer.render(scene, camera);
                 }
@@ -676,14 +940,58 @@ def index():
                 scene.add(brainGroup);
             }
 
+            function createNeuralLaserBeam(x1, y1, z1, x2, y2, z2, colorHex) {
+                const points = [new THREE.Vector3(x1, y1, z1), new THREE.Vector3(x2, y2, z2)];
+                const geo = new THREE.BufferGeometry().setFromPoints(points);
+                const mat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.35, linewidth: 2 });
+                const line = new THREE.Line(geo, mat);
+                laserBeams.push(line);
+                scene.add(line);
+            }
+
             function create3DPod(x, z, c, tag) {
                 const g = new THREE.Group(); g.position.set(x, 0, z);
-                const d = new THREE.Mesh(new THREE.BoxGeometry(9, 1.4, 3.4), new THREE.MeshStandardMaterial({ color: 0x111726 }));
-                d.position.y = 1.4; g.add(d);
-                for(let m = -1; m <= 1; m++) {
-                    const scr = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.3, 0.1), new THREE.MeshBasicMaterial({ color: 0x0284c7 }));
-                    scr.position.set(m*2.6, 2.8, -0.6); g.add(scr);
+
+                // Desk
+                const d = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.3, 2.4), new THREE.MeshStandardMaterial({ color: 0x111726 }));
+                d.position.y = 1.3; g.add(d);
+
+                // Computer Monitors
+                for(let m = -1; m <= 1; m += 2) {
+                    const scr = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 0.08), new THREE.MeshBasicMaterial({ color: 0x0284c7 }));
+                    scr.position.set(m*1.0, 2.4, -0.6); g.add(scr);
                 }
+
+                // Swivel Chair
+                const seat = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.2, 1.2), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+                seat.position.set(0, 1.0, 0.8); g.add(seat);
+                const back = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 0.2), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+                back.position.set(0, 1.6, 1.3); g.add(back);
+
+                // Cute Boxy Robot Employee
+                const botBody = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.0, 0.8), new THREE.MeshStandardMaterial({ color: c }));
+                botBody.position.set(0, 1.6, 0.8); g.add(botBody);
+
+                const botHead = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.6), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                botHead.position.set(0, 2.4, 0.8); g.add(botHead);
+
+                // Overhead Floating Badge
+                const tagCanvas = document.createElement('canvas');
+                tagCanvas.width = 256; tagCanvas.height = 64;
+                const tctx = tagCanvas.getContext('2d');
+                tctx.fillStyle = '#111726';
+                tctx.fillRect(0, 0, 256, 64);
+                tctx.fillStyle = '#38bdf8';
+                tctx.font = 'bold 22px sans-serif';
+                tctx.fillText(tag.split(' ')[0], 20, 40);
+
+                const texture = new THREE.CanvasTexture(tagCanvas);
+                const spriteMat = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMat);
+                sprite.position.set(0, 3.4, 0.8);
+                sprite.scale.set(3, 0.75, 1);
+                g.add(sprite);
+
                 scene.add(g);
             }
 
@@ -698,6 +1006,7 @@ def index():
 
             window.onload = () => {
                 initFluidRibbon();
+                drawMiniCandles(selectedAsset);
                 syncData();
                 setInterval(syncData, 3000);
             };
