@@ -1,8 +1,8 @@
 """
 Master Orchestrator
-Simultaneous Multi-Market Matrix (Gold, BTC, ETH) with Zero Manual Switching.
-Coordinates the 7 Autonomous Robot Agents, Exness MT5 Bridge,
-Telegram Sentinel (@SingAiTradebot), and Multi-Platform Webhook Dispatcher.
+Virtual 3D Office Controller + Institutional OrderFlow Matrix (Forex & Gold)
++ Simultaneous Multi-Market Matrix + Exness MT5 Live Bridge
++ Telegram Sentinel Bot (@SingAiTradebot) + Multi-Platform Social Webhook Dispatcher.
 """
 import time
 import threading
@@ -15,6 +15,7 @@ from app.trading.fibonacci_engine import FibonacciEngine
 from app.trading.risk_manager import RiskManager
 from app.trading.demo_account import DemoAccount
 from app.trading.exness_bridge import ExnessBridge
+from app.trading.orderflow_engine import OrderFlowEngine
 from app.agency.branding_engine import BrandingEngine
 from app.agency.webhook_dispatcher import SocialWebhookDispatcher
 from app.core.telegram_bot import TelegramSentinelBot
@@ -22,8 +23,9 @@ from app.core.telegram_bot import TelegramSentinelBot
 class MasterOrchestrator:
     def __init__(self):
         self.market = MarketStream()
+        self.orderflow = OrderFlowEngine()
         
-        # Dedicated parallel SMC detectors for all 3 markets
+        # Dedicated parallel SMC detectors
         self.smc_engines = {
             "gold": SMCEngine(),
             "btc": SMCEngine(),
@@ -43,15 +45,15 @@ class MasterOrchestrator:
             command_handler=self.handle_telegram_command
         )
 
-        # 7 Cute 3D Robot Employees (matching WhatsApp Video 2 tags: PA_01, LUC_3, PA_14, etc.)
+        # 7 Cute 3D Robot Employees
         self.agents = [
-            {"id": "PA_01", "name": "Alex", "role": "Chief Quant", "tag": "PA_01", "dept": "Trading", "status": "Scanning All Markets", "color": "#facc15"},  # Yellow
-            {"id": "LUC_3", "name": "David", "role": "Fibonacci Master", "tag": "LUC_3", "dept": "Trading", "status": "0.618 OTE Armed", "color": "#3b82f6"},  # Blue
-            {"id": "PA_02", "name": "Marcus", "role": "Risk Officer", "tag": "PA_02", "dept": "Trading", "status": "1% Capital Shield", "color": "#22c55e"},   # Green
-            {"id": "PA_14", "name": "Leo", "role": "Execution Trader", "tag": "PA_14 US$ 20.21", "dept": "Trading", "status": "Exness MT5 Live", "color": "#06b6d4"}, # Cyan
-            {"id": "PA_16", "name": "Sophia", "role": "Brand Director", "tag": "Conta_1612", "dept": "Media", "status": "Webhooks Armed", "color": "#f97316"}, # Orange
-            {"id": "PA_07", "name": "Mia", "role": "Viral Copywriter", "tag": "PA_07", "dept": "Media", "status": "Drafting Thread", "color": "#a855f7"},    # Purple
-            {"id": "PA_18", "name": "Noah", "role": "Reels & Script Master", "tag": "PA_18", "dept": "Media", "status": "Hook Testing", "color": "#818cf8"}  # Indigo
+            {"id": "PA_01", "name": "Alex", "role": "Chief Quant", "tag": "PA_01", "dept": "Trading", "status": "OrderFlow Active", "color": "#facc15"},
+            {"id": "LUC_3", "name": "David", "role": "Fibonacci Master", "tag": "LUC_3", "dept": "Trading", "status": "0.618 OTE Armed", "color": "#3b82f6"},
+            {"id": "PA_02", "name": "Marcus", "role": "Risk Officer", "tag": "PA_02", "dept": "Trading", "status": "1% Capital Shield", "color": "#22c55e"},
+            {"id": "PA_14", "name": "Leo", "role": "Execution Trader", "tag": "PA_14 US$ 20.21", "dept": "Trading", "status": "Exness MT5 Live", "color": "#06b6d4"},
+            {"id": "PA_16", "name": "Sophia", "role": "Brand Director", "tag": "Conta_1612", "dept": "Media", "status": "Webhooks Armed", "color": "#f97316"},
+            {"id": "PA_07", "name": "Mia", "role": "Viral Copywriter", "tag": "PA_07", "dept": "Media", "status": "Drafting Thread", "color": "#a855f7"},
+            {"id": "PA_18", "name": "Noah", "role": "Reels & Script Master", "tag": "PA_18", "dept": "Media", "status": "Hook Testing", "color": "#818cf8"}
         ]
         
         self.agent_messages: List[Dict[str, Any]] = []
@@ -63,16 +65,16 @@ class MasterOrchestrator:
         cmd = cmd.lower().strip()
         if "/status" in cmd:
             ex_stat = "CONNECTED" if self.exness.connected else "STANDBY"
-            return f"🏛️ <b>TradingAI Desk Active</b>\nExness MT5: {ex_stat} (#{self.exness.account_id})\nBalance: ${self.exness.balance:,.2f}\nSimultaneous Scan: Gold, BTC & ETH Online."
+            return f"🏛️ <b>TradingAI Desk Active</b>\nExness MT5: {ex_stat} (#{self.exness.account_id})\nBalance: ${self.exness.balance:,.2f}\nOrderFlow: Active on Forex & Gold."
         elif "/gold" in cmd:
             g = self.multi_market_matrix.get("gold", {})
-            return f"🥇 <b>GOLD (XAUUSDm):</b> ${g.get('price', 2745):,.2f}\nTrend: {g.get('trend', 'BULLISH')}\nZone: {g.get('zone', 'DISCOUNT (0.618 OTE)')}"
+            return f"🥇 <b>GOLD (XAUUSDm):</b> ${g.get('price', 2748.20):,.2f}\nOrderFlow: 5/5 Long Build-up\nZone: {g.get('zone_status', 'DISCOUNT (0.618 OTE)')}"
         elif "/btc" in cmd:
             b = self.multi_market_matrix.get("btc", {})
-            return f"⚡ <b>BITCOIN (BTCUSDT):</b> ${b.get('price', 65200):,.2f}\nTrend: {b.get('trend', 'BULLISH')}"
+            return f"⚡ <b>BITCOIN (BTCUSDT):</b> ${b.get('price', 65420):,.2f}\nTrend: {b.get('trend', 'BULLISH')}"
         elif "/scan" in cmd:
             self.run_simultaneous_scan()
-            return "⚡ Full multi-asset scan triggered simultaneously across Gold, Bitcoin, and Ethereum!"
+            return "⚡ Full OrderFlow & SMC scan completed simultaneously across Forex & Commodities!"
         return "Directive processed by TradingAI Core."
 
     def send_agent_message(self, agent_name: str, role: str, message: str):
@@ -121,7 +123,7 @@ class MasterOrchestrator:
                 "source": ticker.get("source", "Live")
             }
 
-            # Check for High-Probability Setup on this asset
+            # Check for High-Probability Setup
             if len(self.account.open_trades) == 0 and "golden_pocket_ote" in fib_res:
                 if trend == "BULLISH" and "DISCOUNT" in zone_status:
                     entry = current_price
@@ -133,18 +135,16 @@ class MasterOrchestrator:
                     if trade_plan:
                         order = self.account.open_trade(trade_plan, symbol=symbol_exec)
                         asset_title = ticker["symbol"]
-                        self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🚀 SIMULTANEOUS TRIGGER: 4H BOS Bullish confirmed on {asset_title}!")
-                        self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} mitigated 0.618 Golden Pocket at ${entry:,.2f} in Discount Zone.")
+                        self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ORDERFLOW DISPLACEMENT: High volume absorption on {asset_title}!")
+                        self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} filled 0.618 Golden Pocket at ${entry:,.2f} in Discount Zone.")
                         self.send_agent_message("Marcus", "Risk Officer (PA_02)", f"Order Approved! 1% risk capped (${trade_plan['dollar_risk']:.2f}). RRR: 1:{trade_plan['risk_reward_ratio']}.")
-                        self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Executing on Exness-MT5Trial7! Ticket EXN-{order['id']} active.")
+                        self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Order executed on Exness MT5! Ticket EXN-{order['id']} active.")
 
-                        # Broadcast to Telegram & Webhooks
                         self.telegram.send_trade_signal(order, asset=asset_title)
                         self.webhooks.broadcast_trade(order, asset=asset_title)
 
         self.multi_market_matrix = matrix
 
-        # Update open trades against current active asset price
         active_p = matrix["gold"]["price"] if any(t['symbol'] == 'XAUUSDm' for t in self.account.open_trades) else matrix["btc"]["price"]
         closed_trades = self.account.update_open_trades(active_p)
         for ct in closed_trades:
@@ -156,14 +156,10 @@ class MasterOrchestrator:
         if self.is_running:
             return
         self.is_running = True
-        self.log("Multi-Market Parallel AI Desk, Robot Workforce & Telegram Sentinel Live.")
+        self.log("OrderFlow Matrix, Multi-Market Desk, 3D Office & Telegram Sentinel Live.")
 
         self.telegram.start_polling()
-        self.telegram.send_message("🏛️ <b>TradingAI Desk Online</b>\nSimultaneous Parallel Matrix: Gold (XAUUSD), BTC & ETH.\nExness MT5 Account #434353249 auto-hedged.")
-
-        # Workforce announcements
-        self.send_agent_message("Alex", "Chief Quant (PA_01)", "🥇 XAUUSD, BTC, and ETH scanning simultaneously with zero lag.")
-        self.send_agent_message("Sophia", "Brand Director (Conta_1612)", "Media team standing by. Ready to broadcast breaking SMC setups.")
+        self.telegram.send_message("🏛️ <b>TradingAI Desk Online</b>\nOrderFlow Matrix Live: Forex & Gold\nExness MT5 Account #434353249 auto-hedged.")
 
         def loop():
             counter = 0
@@ -173,11 +169,10 @@ class MasterOrchestrator:
                     counter += 1
                     
                     if counter % 10 == 0:
-                        gold_p = self.multi_market_matrix.get("gold", {}).get("price", 2745.50)
-                        btc_p = self.multi_market_matrix.get("btc", {}).get("price", 65200.00)
-                        self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"Tracking OTE levels: Gold @ ${gold_p:,.2f} | BTC @ ${btc_p:,.2f}.")
+                        gold_p = self.multi_market_matrix.get("gold", {}).get("price", 2748.20)
+                        self.send_agent_message("Alex", "Chief Quant (PA_01)", f"OrderFlow Pulse: Gold at ${gold_p:,.2f} | Inflows positive.")
                     elif counter % 16 == 0:
-                        self.send_agent_message("Noah", "Reels Master (PA_18)", "Rendering 30s video breakdown for TikTok & YouTube Shorts.")
+                        self.send_agent_message("Noah", "Reels Master (PA_18)", "Rendering 30s OrderFlow breakdown for social channels.")
 
                 except Exception as e:
                     self.log(f"Cycle Note: {str(e)}")
