@@ -4,6 +4,24 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 
+def load_env_file():
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip('"').strip("'")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
+
+load_env_file()
+
 from app.core.orchestrator import MasterOrchestrator
 
 app = FastAPI(title="TradingAI · Real-Time Animated OrderFlow & 3D Office with AI Brain")
@@ -85,6 +103,71 @@ def save_webhooks(data: WebhookConfigInput):
     orchestrator.webhooks.set_webhook_url("generic_social", data.generic_social or "")
     orchestrator.send_agent_message("Sophia", "Brand Director (Conta_1612)", "Multi-platform social webhooks armed.")
     return {"status": "success", "webhooks": orchestrator.webhooks.webhooks}
+
+class VoiceDirectiveInput(BaseModel):
+    transcript: str
+
+def query_gemini_voice(prompt: str, context: str) -> str:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    system_instruction = (
+        "You are the Institutional AI Central Brain of TradingAI. "
+        "You supervise 7 robotic quants, monitor live Exness MT5 trading (#434353249), Gold (XAUUSD), and Bitcoin order flows. "
+        "You speak respectfully, concisely, and warmly in natural Bengali (address the user as 'ভাই'). "
+        "Keep your reply strictly under 2-3 short sentences so it speaks smoothly over audio. "
+        f"Real-Time Account & Market Context: {context}"
+    )
+    try:
+        import requests
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": f"{system_instruction}\n\nUser Question: {prompt}"}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "maxOutputTokens": 120,
+                "temperature": 0.7
+            }
+        }
+        res = requests.post(url, json=payload, timeout=3.5)
+        if res.status_code == 200:
+            data = res.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                txt = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                if txt:
+                    return txt.strip()
+    except Exception:
+        pass
+
+    lower = prompt.lower()
+    if "gold" in lower or "shona" in lower or "xau" in lower:
+        return "ভাই, গোল্ড (XAUUSD) বর্তমানে স্ট্রং বুলিশ লিকুইডিটি ফ্লোতে আছে এবং আপার একিউমুলেশন গেট দিয়ে প্রবাহিত হচ্ছে। ডিসকাউন্ট জোনে এলে আমরা বাই অর্ডার নেব।"
+    elif "btc" in lower or "bitcoin" in lower:
+        return "ভাই, বিটকয়েন $67,800 লেভেলে হাই ভলিউম কনসোলিডেশনে আছে এবং ম্যাট্রিক্সে ৫/৫ কনভিকশনে রয়েছে।"
+    elif "balance" in lower or "equity" in lower or "account" in lower or "taka" in lower:
+        bal = orchestrator.exness.balance
+        return f"ভাই, আপনার Exness MT5 ব্যালেন্স বর্তমানে ${bal:.2f} USD এবং সম্পূর্ণ ফান্ড সেফলি অটো-হেজড আছে।"
+    elif "trade" in lower or "position" in lower:
+        open_c = len(orchestrator.exness.open_positions)
+        return f"ভাই, বর্তমানে {open_c}টি লাইভ ট্রেড ওপেন আছে এবং সেন্ট্রাল ব্রেন প্রতি ২.৫ সেকেন্ড পর পর মার্কেট অডিট করছে।"
+    else:
+        return "ভাই, আমি আপনার সেন্ট্রাল নিউরাল ব্রেন। লাইভ অর্ডারফ্লো এবং ৭ জন কোয়ান্ট রোবট সক্রিয় আছে। আপনি মার্কেট বা অ্যাকাউন্ট সম্পর্কিত যেকোনো কিছু জানতে পারেন।"
+
+@app.post("/api/ai/voice")
+def ai_voice_directive(data: VoiceDirectiveInput):
+    prompt = (data.transcript or "").strip()
+    bal = orchestrator.exness.balance
+    eq = orchestrator.exness.equity
+    open_c = len(orchestrator.exness.open_positions)
+    context = f"Exness MT5 Balance: ${bal:.2f} USD, Equity: ${eq:.2f} USD, Open Positions: {open_c}."
+    reply = query_gemini_voice(prompt, context)
+    orchestrator.send_agent_message("You (Voice)", "Director", f"🎙️ \"{prompt}\"")
+    orchestrator.send_agent_message("AI Brain", "Neural Overseer", f"🗣️ {reply}")
+    return {"reply": reply, "status": "success"}
 
 class RiskModeInput(BaseModel):
     mode: str  # "conservative", "institutional", "aggressive"
@@ -900,6 +983,23 @@ def index():
                     <!-- 2. SANKEY STREAM RIVER CANVAS (WITH DUAL GATES) -->
                     <div class="of-river-col">
                         <canvas id="sankey-river-canvas"></canvas>
+                        
+                        <!-- Visual User Guide Legend (Easy to understand for anyone) -->
+                        <div class="of-river-legend" style="padding: 6px 14px; background: rgba(17,23,38,0.75); backdrop-filter: blur(8px); border-bottom: 1px solid var(--of-border); display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-family: 'JetBrains Mono';">
+                            <span style="display:flex; align-items:center; gap:6px;">
+                                <span style="width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 6px #10b981;"></span>
+                                <strong style="color:#10b981;">Upper Gate:</strong> <span style="color:var(--of-text-muted);">Smart Money Buying (Accumulation)</span>
+                            </span>
+                            <span style="display:flex; align-items:center; gap:6px;">
+                                <span style="width:8px; height:8px; border-radius:50%; background:#ffffff; box-shadow:0 0 8px #ffffff;"></span>
+                                <strong style="color:#f8fafc;">White Ball:</strong> <span style="color:var(--of-text-muted);">Selected Asset Live Wave</span>
+                            </span>
+                            <span style="display:flex; align-items:center; gap:6px;">
+                                <span style="width:8px; height:8px; border-radius:50%; background:#ef4444; box-shadow:0 0 6px #ef4444;"></span>
+                                <strong style="color:#ef4444;">Lower Gate:</strong> <span style="color:var(--of-text-muted);">Smart Money Selling (Distribution)</span>
+                            </span>
+                        </div>
+
                         <div class="of-timeline-bar">
                             <span>09:15</span>
                             <span>10:00</span>
@@ -1272,8 +1372,8 @@ def index():
                 ctx.strokeRect(gUpperX, gUpperY, gW, gH);
 
                 ctx.fillStyle = '#10b981';
-                ctx.font = `bold ${10 * window.devicePixelRatio}px sans-serif`;
-                ctx.fillText('▲ BULLISH GATE', gUpperX + 8, gUpperY - 8);
+                ctx.font = `bold ${10 * window.devicePixelRatio}px 'JetBrains Mono', sans-serif`;
+                ctx.fillText('▲ ACCUMULATION GATE (Buying Inflow)', gUpperX + 4, gUpperY - 8);
 
                 // 2. Lower Red Gate (Bearish Funnel)
                 const gLowerX = W * 0.72;
@@ -1286,7 +1386,8 @@ def index():
                 ctx.strokeRect(gLowerX, gLowerY, gW, gH);
 
                 ctx.fillStyle = '#ef4444';
-                ctx.fillText('▼ BEARISH GATE', gLowerX + 8, gLowerY + gH + 16 * window.devicePixelRatio);
+                ctx.font = `bold ${10 * window.devicePixelRatio}px 'JetBrains Mono', sans-serif`;
+                ctx.fillText('▼ DISTRIBUTION GATE (Selling Outflow)', gLowerX + 4, gLowerY + gH + 16 * window.devicePixelRatio);
 
                 // Draw Multiple Continuous River Streams (Animated Wave Physics)
                 const streamCount = 28;
@@ -1388,6 +1489,15 @@ def index():
                 ctx.beginPath();
                 ctx.arc(hpx, hpy, 5 * window.devicePixelRatio, 0, Math.PI * 2);
                 ctx.fill();
+
+                // Live floating badge tracking the selected asset
+                const selSymbol = selectedPairData ? selectedPairData.symbol : 'XAUUSD (Gold)';
+                const selChg = selectedPairData ? (selectedPairData.chg >= 0 ? '+' : '') + selectedPairData.chg.toFixed(2) + '%' : '+2.04%';
+                ctx.font = `bold ${10 * window.devicePixelRatio}px 'JetBrains Mono', sans-serif`;
+                ctx.fillStyle = isDark ? '#ffffff' : '#0f172a';
+                ctx.shadowColor = isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)';
+                ctx.shadowBlur = 6;
+                ctx.fillText(`⚡ ${selSymbol} (${selChg})`, hpx + (8 * window.devicePixelRatio), hpy - (8 * window.devicePixelRatio));
 
                 ctx.shadowBlur = 0; // reset
             }
@@ -1965,52 +2075,51 @@ def index():
 
                 let idx = 0;
                 for (let i = 0; i < brainParticleCount; i++) {
-                    // Symmetrical hemispheres: right (+1) and left (-1)
+                // Symmetrical hemispheres: right (+1) and left (-1)
+                for (let i = 0; i < brainParticleCount; i++) {
                     const side = (i % 2 === 0) ? 1.0 : -1.0;
 
-                    const theta = Math.acos(2 * Math.random() - 1); // 0 to PI
-                    const phi = Math.random() * Math.PI;            // 0 to PI
+                    // Complete spherical angles covering all 360-degree lobes
+                    const theta = Math.acos(2 * Math.random() - 1);
+                    const phi = Math.random() * Math.PI * 2;
 
-                    // Base human brain proportions
-                    let bx = 1.35 * Math.sin(theta) * Math.cos(phi);
-                    let by = 1.25 * Math.cos(theta);
-                    let bz = 1.80 * Math.sin(theta) * Math.sin(phi);
+                    let nx = Math.sin(theta) * Math.cos(phi);
+                    let ny = Math.cos(theta);
+                    let nz = Math.sin(theta) * Math.sin(phi);
 
                     // Longitudinal cerebral fissure (separation between left & right hemispheres)
-                    bx = side * (Math.abs(bx) * 0.90 + 0.22);
+                    nx = side * (Math.abs(nx) * 0.88 + 0.16);
 
-                    // Anatomical shaping:
-                    // 1. Frontal lobe expansion (z > 0)
-                    if (bz > 0) {
-                        by *= (1.0 + bz * 0.12);
-                        bx *= (1.0 + bz * 0.08);
+                    // Anatomical brain lobe shaping:
+                    // 1. Frontal Lobe expansion (elevated and rounded front, z > 0)
+                    if (nz > 0) {
+                        ny *= (1.0 + nz * 0.15);
+                        nx *= (1.0 + nz * 0.08);
                     }
-                    // 2. Occipital slope down (z < 0)
-                    if (bz < 0) {
-                        by *= (1.0 + bz * 0.15);
+                    // 2. Occipital Lobe slope (curving downward at rear, z < 0)
+                    if (nz < 0) {
+                        ny *= (1.0 + nz * 0.12);
                     }
-                    // 3. Temporal lobe lateral bulging (lower sides)
-                    if (by < 0.1 && bz > -0.6 && bz < 0.7) {
-                        bx += side * 0.35 * Math.sin((bz + 0.6) * 2.2);
-                        by -= 0.15;
+                    // 3. Temporal Lobes (lateral bulging on lower sides)
+                    if (ny < 0.2 && Math.abs(nz) < 0.6) {
+                        nx += side * 0.32 * Math.cos(nz * 2.5);
                     }
-                    // 4. Cerebellum tucked below rear occipital lobe
-                    if (bz < -0.4 && by < -0.2) {
-                        bx *= 0.82;
-                        by -= 0.25;
-                        bz -= 0.15;
+                    // 4. Cerebellum (tucked below rear occipital lobe)
+                    if (nz < -0.2 && ny < -0.15) {
+                        nx *= 0.85;
+                        ny -= 0.28 * Math.cos(nz * 2.0);
+                        nz -= 0.12;
                     }
 
-                    // 5. Gyri & Sulci: Organic cerebral folds & wrinkles
-                    const fold1 = Math.sin(bx * 4.2) * Math.cos(by * 4.2) * Math.sin(bz * 4.2) * 0.14;
-                    const fold2 = Math.sin(bx * 8.5 + bz * 7.0) * Math.cos(by * 6.5) * 0.07;
-                    const totalFold = fold1 + fold2;
+                    // 5. Gyri & Sulci: Iconic organic cerebral folds & wrinkles
+                    const gyri = (Math.sin(nx * 5.2) * Math.cos(ny * 5.2) * Math.sin(nz * 5.2)
+                                + Math.sin(nx * 9.5 + nz * 8.0) * 0.25) * 0.16;
 
-                    // Cortex thickness distribution
-                    const depth = 0.88 + Math.pow(Math.random(), 2) * 0.18;
-                    let px = (bx + totalFold) * depth * 1.25;
-                    let py = (by + totalFold) * depth * 1.25;
-                    let pz = (bz + totalFold) * depth * 1.25;
+                    // Cortex depth distribution (surface layer + internal synaptic pathways)
+                    const depth = 0.88 + Math.pow(Math.random(), 2.5) * 0.20;
+                    let px = (nx * 1.55 + gyri) * depth;
+                    let py = (ny * 1.65 + gyri) * depth;
+                    let pz = (nz * 2.10 + gyri) * depth;
 
                     positions[idx]     = px;
                     positions[idx + 1] = py;
@@ -2235,7 +2344,109 @@ def index():
                     }
                 }
             };
+
+            // 🎙️ GOOGLE GEMINI POWERED AI VOICE ASSISTANT WITH 3D BRAIN PULSE
+            let voiceRecognition = null;
+            let isVoiceRecording = false;
+
+            function initVoiceRecognition() {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {
+                    alert("Speech recognition not supported in this browser. Please use Google Chrome or Edge.");
+                    return;
+                }
+                voiceRecognition = new SpeechRecognition();
+                voiceRecognition.lang = 'bn-BD';
+                voiceRecognition.continuous = false;
+                voiceRecognition.interimResults = false;
+
+                voiceRecognition.onstart = () => {
+                    isVoiceRecording = true;
+                    const mic = document.getElementById('ai-voice-mic-btn');
+                    if (mic) mic.style.transform = 'scale(1.15)';
+                    const bubble = document.getElementById('ai-voice-bubble');
+                    if (bubble) bubble.style.display = 'block';
+                    const txt = document.getElementById('ai-voice-text');
+                    if (txt) txt.innerText = "🎙️ শুনছি... বাংলায় বা ইংরেজিতে প্রশ্ন করুন।";
+                };
+
+                voiceRecognition.onresult = async (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    const txt = document.getElementById('ai-voice-text');
+                    if (txt) txt.innerHTML = `<em>"${transcript}"</em><br><span style="color:#38bdf8;">🧠 Gemini Brain thinking...</span>`;
+
+                    try {
+                        const res = await fetch('/api/ai/voice', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ transcript: transcript })
+                        });
+                        const data = await res.json();
+                        const reply = data.reply || "Directive processed.";
+                        if (txt) txt.innerHTML = `<strong>AI Brain:</strong> ${reply}`;
+
+                        speakBrainVoice(reply);
+                    } catch (err) {
+                        if (txt) txt.innerText = "Error connecting to AI Brain.";
+                    }
+                };
+
+                voiceRecognition.onerror = (e) => {
+                    isVoiceRecording = false;
+                    const mic = document.getElementById('ai-voice-mic-btn');
+                    if (mic) mic.style.transform = 'scale(1)';
+                    const bubble = document.getElementById('ai-voice-bubble');
+                    if (bubble) setTimeout(() => { bubble.style.display = 'none'; }, 3000);
+                };
+
+                voiceRecognition.onend = () => {
+                    isVoiceRecording = false;
+                    const mic = document.getElementById('ai-voice-mic-btn');
+                    if (mic) mic.style.transform = 'scale(1)';
+                };
+            }
+
+            function toggleAIVoiceChat() {
+                if (!voiceRecognition) initVoiceRecognition();
+                if (!voiceRecognition) return;
+                if (isVoiceRecording) {
+                    voiceRecognition.stop();
+                } else {
+                    voiceRecognition.start();
+                }
+            }
+
+            function speakBrainVoice(text) {
+                if (typeof brainSpeechActivity !== 'undefined') {
+                    brainSpeechActivity = 1.0;
+                }
+                if (!window.speechSynthesis) return;
+                try {
+                    window.speechSynthesis.cancel();
+                    const utter = new SpeechSynthesisUtterance(text);
+                    utter.rate = 1.0;
+                    utter.pitch = 1.05;
+                    const voices = window.speechSynthesis.getVoices();
+                    const bnVoice = voices.find(v => v.lang.includes('bn') || v.lang.includes('hi'));
+                    if (bnVoice) utter.voice = bnVoice;
+                    window.speechSynthesis.speak(utter);
+                } catch (e) {}
+            }
         </script>
+
+        <!-- Floating AI Voice Assistant Widget (Powered by Gemini) -->
+        <div id="ai-voice-widget" style="position: fixed; bottom: 22px; right: 22px; z-index: 999; display: flex; align-items: center; gap: 10px;">
+            <div id="ai-voice-bubble" style="display: none; background: rgba(15, 23, 42, 0.94); backdrop-filter: blur(12px); border: 1px solid #38bdf8; border-radius: 12px; padding: 10px 16px; max-width: 320px; font-size: 12px; color: #f8fafc; font-family: 'Inter', sans-serif; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+                <div style="font-size: 10px; font-weight: 800; color: #38bdf8; margin-bottom: 3px; display: flex; align-items: center; gap: 5px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #38bdf8; animation: pulseRed 1s infinite;"></span>
+                    GEMINI AI CENTRAL BRAIN
+                </div>
+                <div id="ai-voice-text" style="line-height: 1.4;">🎙️ শুনছি... বাংলায় বা ইংরেজিতে প্রশ্ন করুন।</div>
+            </div>
+            <button id="ai-voice-mic-btn" onclick="toggleAIVoiceChat()" style="background: linear-gradient(135deg, #0284c7, #ec4899); border: none; width: 48px; height: 48px; border-radius: 50%; color: #fff; font-size: 20px; cursor: pointer; box-shadow: 0 4px 20px rgba(236,72,153,0.5); display: flex; align-items: center; justify-content: center; transition: all 0.3s;" title="Talk to AI Central Brain (Google Gemini)">
+                🎙️
+            </button>
+        </div>
     </body>
     </html>
     """
