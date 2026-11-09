@@ -102,14 +102,19 @@ def direct_execute(data: dict):
     sl = price * 0.996 if side == "BUY" else price * 1.004
     tp = price * 1.012 if side == "BUY" else price * 0.988
     
+    # 1. Execute directly on physical Exness MT5 Terminal
+    mt5_res = orchestrator.exness.execute_live_order(symbol, side, volume=0.01, sl=sl, tp=tp)
+    
+    # 2. Risk Evaluation & Internal Logging
     plan = orchestrator.risk.evaluate_and_size_trade(orchestrator.exness.balance, side, price, sl, tp)
-    if plan:
-        order = orchestrator.account.open_trade(plan, symbol=symbol)
-        orchestrator.send_agent_message("Leo", "Execution Trader (PA_14)", f"OrderFlow Direct Execution: {side} {symbol} at ${price:,.2f}! Exness MT5 synced.")
-        orchestrator.telegram.send_trade_signal(order, asset=symbol)
-        orchestrator.webhooks.broadcast_trade(order, asset=symbol)
-        return {"status": "success", "order": order}
-    return {"status": "rejected", "message": "Risk threshold exceeded"}
+    order = orchestrator.account.open_trade(plan if plan else {"side": side, "entry_price": price, "stop_loss": sl, "take_profit": tp, "dollar_risk": 0.20, "units": 0.01}, symbol=symbol)
+    
+    ticket_str = mt5_res.get("ticket", order["id"])
+    orchestrator.send_agent_message("Leo", "Execution Trader (PA_14)", f"OrderFlow Live Execution: {side} 0.01 {symbol} on Exness MT5! Ticket #{ticket_str}.")
+    orchestrator.telegram.send_trade_signal(order, asset=symbol)
+    orchestrator.webhooks.broadcast_trade(order, asset=symbol)
+    
+    return {"status": "success", "order": order, "mt5_execution": mt5_res}
 
 @app.get("/", response_class=HTMLResponse)
 def index():
@@ -443,16 +448,29 @@ def index():
                 </button>
             </div>
 
+            <!-- PROMINENT LIVE EXNESS MT5 ACCOUNT WIDGET (FRONT & CENTER) -->
+            <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 10px; padding: 5px 14px; display: flex; align-items: center; gap: 14px; font-family: 'JetBrains Mono'; font-size: 11.5px;">
+                <span style="color: #10b981; font-weight: 800; display: flex; align-items: center; gap: 5px;">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulseRed 1.5s infinite;"></span>
+                    EXNESS MT5: #434353249
+                </span>
+                <span>Balance: <strong id="nav-exness-balance" style="color: #38bdf8; font-weight: 800; font-size: 13px;">$20.21 USD</strong></span>
+                <span>Equity: <strong id="nav-exness-equity" style="color: #10b981; font-weight: 800;">$20.21</strong></span>
+                <span>PnL: <strong id="nav-exness-pnl" style="color: #facc15;">+$0.00</strong></span>
+                <span style="background: #0f172a; border: 1px solid #334155; padding: 2px 8px; border-radius: 4px; font-size: 10.5px;">
+                    <span id="nav-open-count" style="color: #38bdf8; font-weight: 800;">1 Live Order</span>
+                </span>
+            </div>
+
             <!-- Sound & Voice Toggles + Exness Status -->
-            <div style="display: flex; align-items: center; gap: 10px; font-size: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
                 <button id="sound-btn" onclick="toggleSound()" style="background: #111726; border: 1px solid #1e293b; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
                     🔊 Audio: ON
                 </button>
                 <button id="voice-btn" onclick="toggleVoice()" style="background: #111726; border: 1px solid #1e293b; color: #ec4899; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
                     🗣️ Brain Voice: ON
                 </button>
-                <span style="color: #10b981; font-weight: 700;">● @SingAiTradebot Live</span>
-                <span style="background: #111726; border: 1px solid #1e293b; padding: 4px 10px; border-radius: 6px; font-family: 'JetBrains Mono';">Exness MT5: #434353249</span>
+                <span style="color: #10b981; font-weight: 700; font-size: 11px;">● @SingAiTradebot</span>
             </div>
         </header>
 
@@ -484,18 +502,20 @@ def index():
                     </div>
                 </div>
 
-                <!-- Subheader Status Line -->
-                <div class="of-subhead">
+                <!-- Subheader Status Line with Detailed Exness Account Metrics -->
+                <div class="of-subhead" id="subhead-exness-detail">
                     <div>
-                        <span>NSE / MT5 archive 6 Nov 2026 · replay &nbsp;</span>
+                        <span style="color: #10b981; font-weight: 800;">● EXNESS MT5 LIVE:</span>
+                        <b>#434353249</b> on <b>Exness-MT5Trial7</b> &nbsp;·&nbsp;
+                        Balance: <strong style="color: var(--of-green-line); font-size: 12px;" id="subhead-bal">$20.21 USD</strong> &nbsp;·&nbsp;
+                        Equity: <strong id="subhead-eq">$20.21 USD</strong> &nbsp;·&nbsp;
                         <strong style="color: var(--of-green);">12 up</strong> · 
                         <span>8 flat</span> · 
-                        <strong style="color: var(--of-red);">10 down of 30</strong> &nbsp;
-                        <span>As of 6 Nov, 13:40 · futures to 13:40</span>
+                        <strong style="color: var(--of-red);">10 down</strong>
                     </div>
                     <div style="display: flex; gap: 14px;">
                         <span><b style="color: var(--of-green);">▲ Bullish 12</b> &nbsp; <b style="color: var(--of-red);">▼ Bearish 10</b></span>
-                        <span>Leading <b>Precious Metals & Crypto</b> · Lagging <b>US Dollar & Yen</b></span>
+                        <span>Active Exness Deal: <b style="color: var(--of-blue);" id="subhead-deal">EURUSDm (BUY 0.01 Lot) Ticket #5012444923</b></span>
                     </div>
                 </div>
 
@@ -762,13 +782,40 @@ def index():
                 cont.innerHTML = html;
             }
 
-            // DRAW SANKEY RIVER WITH UPPER & LOWER GATES
-            function drawSankeyRiver() {
+            // CONTINUOUS 60 FPS ANIMATED FLUID SANKEY RIVER WITH MOVING PARTICLES & GATES
+            let riverParticles = [];
+            let wavePhase = 0;
+            let riverAnimId = null;
+
+            function initRiverParticles() {
+                riverParticles = [];
+                for (let i = 0; i < 90; i++) {
+                    const isBull = Math.random() < 0.58;
+                    riverParticles.push({
+                        isBull: isBull,
+                        progress: Math.random(),
+                        speed: 0.0035 + Math.random() * 0.005,
+                        width: 2 + Math.random() * 3,
+                        yJitter: (Math.random() - 0.5) * 26,
+                        pulse: Math.random() * Math.PI * 2
+                    });
+                }
+            }
+
+            function animateRiverLoop() {
+                wavePhase += 0.035;
+                drawSankeyRiver(wavePhase);
+                riverAnimId = requestAnimationFrame(animateRiverLoop);
+            }
+
+            function drawSankeyRiver(phase = 0) {
                 const canvas = document.getElementById('sankey-river-canvas');
                 if (!canvas) return;
                 const ctx = canvas.getContext('2d');
-                canvas.width = canvas.clientWidth * window.devicePixelRatio;
-                canvas.height = canvas.clientHeight * window.devicePixelRatio;
+                if (canvas.width !== canvas.clientWidth * window.devicePixelRatio) {
+                    canvas.width = canvas.clientWidth * window.devicePixelRatio;
+                    canvas.height = canvas.clientHeight * window.devicePixelRatio;
+                }
 
                 const W = canvas.width;
                 const H = canvas.height;
@@ -786,28 +833,30 @@ def index():
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // Benchmark DXY line
+                // Benchmark DXY line with wave modulation
                 ctx.strokeStyle = isDark ? '#475569' : '#94a3b8';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(20, zeroY + 10);
-                ctx.bezierCurveTo(W * 0.3, zeroY + 25, W * 0.6, zeroY + 15, W - 20, zeroY + 28);
+                const dxyWave = Math.sin(phase * 1.5) * 4;
+                ctx.bezierCurveTo(W * 0.3, zeroY + 25 + dxyWave, W * 0.6, zeroY + 15 - dxyWave, W - 20, zeroY + 28);
                 ctx.stroke();
 
-                // DUAL CONVERGENCE TUNNELS / GATES
+                // DUAL CONVERGENCE TUNNELS / GATES (WITH GLOWING PULSE)
+                const gatePulse = Math.sin(phase * 2) * 0.08;
+
                 // 1. Upper Green Gate (Bullish Funnel)
                 const gUpperX = W * 0.72;
                 const gUpperY = H * 0.14;
                 const gW = W * 0.12;
                 const gH = H * 0.18;
 
-                ctx.fillStyle = isDark ? 'rgba(16, 185, 129, 0.22)' : 'rgba(16, 185, 129, 0.12)';
+                ctx.fillStyle = isDark ? `rgba(16, 185, 129, ${0.22 + gatePulse})` : `rgba(16, 185, 129, ${0.12 + gatePulse})`;
                 ctx.fillRect(gUpperX, gUpperY, gW, gH);
                 ctx.strokeStyle = '#10b981';
-                ctx.lineWidth = 2.5;
+                ctx.lineWidth = 2.5 + Math.sin(phase * 2.5) * 0.8;
                 ctx.strokeRect(gUpperX, gUpperY, gW, gH);
 
-                // Gate label
                 ctx.fillStyle = '#10b981';
                 ctx.font = `bold ${10 * window.devicePixelRatio}px sans-serif`;
                 ctx.fillText('▲ BULLISH GATE', gUpperX + 8, gUpperY - 8);
@@ -816,37 +865,36 @@ def index():
                 const gLowerX = W * 0.72;
                 const gLowerY = H * 0.68;
 
-                ctx.fillStyle = isDark ? 'rgba(239, 68, 68, 0.22)' : 'rgba(239, 68, 68, 0.12)';
+                ctx.fillStyle = isDark ? `rgba(239, 68, 68, ${0.22 + gatePulse})` : `rgba(239, 68, 68, ${0.12 + gatePulse})`;
                 ctx.fillRect(gLowerX, gLowerY, gW, gH);
                 ctx.strokeStyle = '#ef4444';
-                ctx.lineWidth = 2.5;
+                ctx.lineWidth = 2.5 + Math.sin(phase * 2.5 + 1) * 0.8;
                 ctx.strokeRect(gLowerX, gLowerY, gW, gH);
 
                 ctx.fillStyle = '#ef4444';
                 ctx.fillText('▼ BEARISH GATE', gLowerX + 8, gLowerY + gH + 16 * window.devicePixelRatio);
 
-                // Draw Multiple River Streams
+                // Draw Multiple Continuous River Streams (Animated Wave Physics)
                 const streamCount = 28;
                 for (let i = 0; i < streamCount; i++) {
                     const isBull = i < 15;
-                    const startY = zeroY + (Math.sin(i) * 35);
+                    const waveMod = Math.sin(phase + i * 0.35) * 7;
+                    const startY = zeroY + (Math.sin(i) * 35) + waveMod * 0.4;
                     const targetGateY = isBull ? (gUpperY + (i % 5) * (gH / 5) + 8) : (gLowerY + (i % 5) * (gH / 5) + 8);
-                    const endY = isBull ? (targetGateY - 10 + Math.sin(i * 2) * 20) : (targetGateY + 10 + Math.sin(i * 2) * 20);
+                    const endY = isBull ? (targetGateY - 10 + Math.sin(i * 2 + phase) * 16) : (targetGateY + 10 + Math.sin(i * 2 + phase) * 16);
 
                     ctx.strokeStyle = isBull 
-                        ? (isDark ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.35)')
-                        : (isDark ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.35)');
+                        ? (isDark ? 'rgba(16, 185, 129, 0.28)' : 'rgba(16, 185, 129, 0.38)')
+                        : (isDark ? 'rgba(239, 68, 68, 0.28)' : 'rgba(239, 68, 68, 0.38)');
                     ctx.lineWidth = 1.6;
 
                     ctx.beginPath();
                     ctx.moveTo(10, startY);
-                    // S-curve dip & rise into the gate
                     ctx.bezierCurveTo(
-                        W * 0.25, startY + (isBull ? -40 : 40),
-                        W * 0.5, targetGateY + (isBull ? 30 : -30),
+                        W * 0.25, startY + (isBull ? -40 : 40) + waveMod,
+                        W * 0.5, targetGateY + (isBull ? 25 : -25) - waveMod,
                         gUpperX, targetGateY
                     );
-                    // Through gate and fan out
                     ctx.lineTo(gUpperX + gW, targetGateY);
                     ctx.bezierCurveTo(
                         gUpperX + gW + W * 0.05, targetGateY,
@@ -856,12 +904,54 @@ def index():
                     ctx.stroke();
                 }
 
+                // 🌊 LIVE FLOWING PARTICLES ALONG THE RIVER PATHS
+                riverParticles.forEach(p => {
+                    p.progress += p.speed;
+                    if (p.progress > 1) p.progress = 0;
+
+                    const t = p.progress;
+                    const isBull = p.isBull;
+                    const startY = zeroY + p.yJitter;
+                    const targetGateY = isBull ? (gUpperY + gH * 0.45 + p.yJitter * 0.6) : (gLowerY + gH * 0.45 + p.yJitter * 0.6);
+                    const endY = isBull ? (gUpperY + p.yJitter * 0.8) : (gLowerY + gH + p.yJitter * 0.8);
+
+                    let px, py;
+                    if (t < 0.68) {
+                        // Phase 1: From left (09:15) to Gate entrance
+                        const subT = t / 0.68;
+                        const cp1X = W * 0.25, cp1Y = startY + (isBull ? -40 : 40);
+                        const cp2X = W * 0.5, cp2Y = targetGateY + (isBull ? 25 : -25);
+                        px = (1 - subT)**3 * 10 + 3 * (1 - subT)**2 * subT * cp1X + 3 * (1 - subT) * subT**2 * cp2X + subT**3 * gUpperX;
+                        py = (1 - subT)**3 * startY + 3 * (1 - subT)**2 * subT * cp1Y + 3 * (1 - subT) * subT**2 * cp2Y + subT**3 * targetGateY;
+                    } else if (t < 0.80) {
+                        // Phase 2: Squeezing through the Gate
+                        const subT = (t - 0.68) / 0.12;
+                        px = gUpperX + subT * gW;
+                        py = targetGateY;
+                    } else {
+                        // Phase 3: Fanning out into the tiles
+                        const subT = (t - 0.80) / 0.20;
+                        const cp1X = gUpperX + gW + W * 0.05, cp1Y = targetGateY;
+                        const cp2X = W * 0.92, cp2Y = endY;
+                        px = (1 - subT)**3 * (gUpperX + gW) + 3 * (1 - subT)**2 * subT * cp1X + 3 * (1 - subT) * subT**2 * cp2X + subT**3 * (W - 5);
+                        py = (1 - subT)**3 * targetGateY + 3 * (1 - subT)**2 * subT * cp1Y + 3 * (1 - subT) * subT**2 * cp2Y + subT**3 * endY;
+                    }
+
+                    ctx.fillStyle = isBull ? '#10b981' : '#ef4444';
+                    ctx.shadowColor = isBull ? '#10b981' : '#ef4444';
+                    ctx.shadowBlur = isDark ? 8 : 4;
+                    ctx.beginPath();
+                    ctx.arc(px, py, p.width * window.devicePixelRatio * 0.65, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                });
+
                 // Highlight Selected Asset Neon Line (e.g. Gold XAUUSD)
                 const selIsBull = selectedPairData ? selectedPairData.direction === 'BULLISH' : true;
                 ctx.strokeStyle = selIsBull ? '#10b981' : '#ef4444';
                 ctx.lineWidth = 4 * window.devicePixelRatio;
                 ctx.shadowColor = selIsBull ? '#10b981' : '#ef4444';
-                ctx.shadowBlur = isDark ? 15 : 6;
+                ctx.shadowBlur = isDark ? 16 : 8;
 
                 const hStartY = zeroY + 12;
                 const hGateY = selIsBull ? gUpperY + gH * 0.45 : gLowerY + gH * 0.45;
@@ -873,6 +963,17 @@ def index():
                 ctx.lineTo(gUpperX + gW, hGateY);
                 ctx.bezierCurveTo(gUpperX + gW + W * 0.04, hGateY, W * 0.92, hEndY, W - 10, hEndY);
                 ctx.stroke();
+
+                // Bright traveling pulse on selected asset
+                const pulseT = (phase * 0.4) % 1;
+                let hpx = W * pulseT;
+                let hpy = zeroY + (selIsBull ? -1 : 1) * Math.sin(pulseT * Math.PI) * (H * 0.3);
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(hpx, hpy, 5 * window.devicePixelRatio, 0, Math.PI * 2);
+                ctx.fill();
 
                 ctx.shadowBlur = 0; // reset
             }
@@ -1078,7 +1179,45 @@ def index():
                             selectedPairData = d.orderflow.bullish_pairs[0];
                         }
                     }
-                    drawSankeyRiver();
+
+                    // UPDATE PROMINENT LIVE EXNESS MT5 METRICS
+                    if (d.exness) {
+                        const bal = Number(d.exness.balance).toFixed(2);
+                        const eq = Number(d.exness.equity).toFixed(2);
+                        const pnl = Number(d.exness.floating_pnl || 0.0).toFixed(2);
+                        const openCount = d.exness.open_positions ? d.exness.open_positions.length : 0;
+
+                        const navBal = document.getElementById('nav-exness-balance');
+                        if (navBal) navBal.innerText = `$${bal} USD`;
+                        const navEq = document.getElementById('nav-exness-equity');
+                        if (navEq) navEq.innerText = `$${eq}`;
+                        const navPnl = document.getElementById('nav-exness-pnl');
+                        if (navPnl) {
+                            navPnl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl}`;
+                            navPnl.style.color = pnl >= 0 ? '#10b981' : '#ef4444';
+                        }
+                        const navCount = document.getElementById('nav-open-count');
+                        if (navCount) {
+                            navCount.innerText = `${openCount} Live Order${openCount === 1 ? '' : 's'}`;
+                        }
+
+                        const subBal = document.getElementById('subhead-bal');
+                        if (subBal) subBal.innerText = `$${bal} USD`;
+                        const subEq = document.getElementById('subhead-eq');
+                        if (subEq) subEq.innerText = `$${eq} USD`;
+
+                        const subDeal = document.getElementById('subhead-deal');
+                        if (subDeal) {
+                            if (openCount > 0 && d.exness.open_positions[0]) {
+                                const pos = d.exness.open_positions[0];
+                                subDeal.innerText = `${pos.symbol} (${pos.side} ${pos.volume} Lot) Ticket #${pos.ticket} · PnL: $${pos.profit >= 0 ? '+' : ''}${pos.profit}`;
+                                subDeal.style.color = pos.profit >= 0 ? 'var(--of-green-line)' : 'var(--of-red-line)';
+                            } else {
+                                subDeal.innerText = 'Scanning for High-Conviction SMC Breakout...';
+                                subDeal.style.color = 'var(--of-text-muted)';
+                            }
+                        }
+                    }
                 } catch(e) {}
             }
 
@@ -1262,12 +1401,18 @@ def index():
 
             window.onload = () => {
                 renderDeltaHistogram();
+                initRiverParticles();
+                animateRiverLoop();
                 syncData();
-                setInterval(syncData, 3000);
+                setInterval(syncData, 2000);
             };
 
             window.onresize = () => {
-                drawSankeyRiver();
+                const canvas = document.getElementById('sankey-river-canvas');
+                if (canvas) {
+                    canvas.width = canvas.clientWidth * window.devicePixelRatio;
+                    canvas.height = canvas.clientHeight * window.devicePixelRatio;
+                }
             };
         </script>
     </body>

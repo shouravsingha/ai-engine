@@ -58,29 +58,106 @@ class ExnessBridge:
         return True
 
     def refresh_balance(self):
-        """Pulls latest tick balance & equity from live MT5 if terminal is active."""
+        """Pulls latest tick balance, equity, margin, and live open positions from MT5."""
         if MT5_AVAILABLE and self.live_terminal:
             try:
                 acc_info = mt5.account_info()
                 if acc_info:
                     self.balance = float(acc_info.balance)
                     self.equity = float(acc_info.equity)
+                    self.currency = acc_info.currency
+                    self.leverage = f"1:{acc_info.leverage}"
                     self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+                # Get open MT5 positions
+                positions = mt5.positions_get()
+                self.open_positions = []
+                total_profit = 0.0
+                if positions:
+                    for p in positions:
+                        side = "BUY" if p.type == 0 else "SELL"
+                        self.open_positions.append({
+                            "ticket": p.ticket,
+                            "symbol": p.symbol,
+                            "side": side,
+                            "volume": p.volume,
+                            "open_price": p.price_open,
+                            "current_price": p.price_current,
+                            "sl": p.sl,
+                            "tp": p.tp,
+                            "profit": round(float(p.profit), 2)
+                        })
+                        total_profit += float(p.profit)
+                self.floating_pnl = round(total_profit, 2)
             except Exception:
                 pass
 
-    def connect_account(self, account_id: str, server: str, balance: float = None) -> Dict[str, Any]:
-        """Manual override or update for Exness credentials."""
-        self.account_id = account_id.strip()
-        self.server = server.strip() if server else "Exness-MT5Trial7"
-        if balance is not None and balance > 0:
-            self.balance = float(balance)
-            self.equity = float(balance)
-        self.connected = True
-        self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-        self.status_message = f"Connected to {self.server} (Account #{self.account_id})"
+    def execute_live_order(self, symbol: str, side: str, volume: float = 0.01, sl: float = 0.0, tp: float = 0.0) -> Dict[str, Any]:
+        """Executes a real order directly on the Exness MT5 terminal."""
+        if not (MT5_AVAILABLE and self.live_terminal):
+            return {"status": "paper", "ticket": f"EXN-MOCK-{int(datetime.now().timestamp())}", "message": "MT5 terminal not linked"}
 
-        return self.get_status()
+        try:
+            # Map symbol for Exness trial account
+            sym = symbol
+            if not mt5.symbol_info(sym):
+                if not sym.endswith("m") and mt5.symbol_info(sym + "m"):
+                    sym = sym + "m"
+                elif sym.endswith("m") and mt5.symbol_info(sym[:-1]):
+                    sym = sym[:-1]
+
+            s_info = mt5.symbol_info(sym)
+            if not s_info:
+                return {"status": "error", "message": f"Symbol {symbol} not found on Exness MT5"}
+
+            if not s_info.visible:
+                mt5.symbol_select(sym, True)
+
+            order_type = mt5.ORDER_TYPE_BUY if side.upper() == "BUY" else mt5.ORDER_TYPE_SELL
+            price = mt5.symbol_info_tick(sym).ask if side.upper() == "BUY" else mt5.symbol_info_tick(sym).bid
+            point = s_info.point
+
+            # Calculate SL and TP if not provided
+            if sl == 0.0:
+                sl = price - 150 * point if side.upper() == "BUY" else price + 150 * point
+            if tp == 0.0:
+                tp = price + 300 * point if side.upper() == "BUY" else price - 300 * point
+
+            req = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "symbol": sym,
+                "volume": float(volume),
+                "type": order_type,
+                "price": price,
+                "sl": float(sl),
+                "tp": float(tp),
+                "deviation": 20,
+                "magic": 202611,
+                "comment": "TradingAI Live Execution",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            }
+            res = mt5.order_send(req)
+            if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                self.refresh_balance()
+                return {
+                    "status": "success",
+                    "ticket": res.order,
+                    "deal": res.deal,
+                    "symbol": sym,
+                    "side": side,
+                    "volume": volume,
+                    "price": res.price,
+                    "message": f"Successfully executed {side} {volume} {sym} on Exness MT5 (Ticket #{res.order})"
+                }
+            else:
+                return {
+                    "status": "failed",
+                    "retcode": res.retcode if res else "None",
+                    "comment": res.comment if res else "Execution rejected by broker"
+                }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
     def get_status(self) -> Dict[str, Any]:
         self.refresh_balance()
@@ -94,7 +171,9 @@ class ExnessBridge:
             "currency": self.currency,
             "leverage": self.leverage,
             "last_sync": self.last_sync,
-            "status_message": self.status_message
+            "status_message": self.status_message,
+            "floating_pnl": getattr(self, "floating_pnl", 0.0),
+            "open_positions": getattr(self, "open_positions", [])
         }
 
     def sync_trade_execution(self, trade: Dict[str, Any]) -> Dict[str, Any]:
