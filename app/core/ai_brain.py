@@ -94,6 +94,7 @@ class AIBrainOverseer:
                         "reason": f"🛡️ BREAK-EVEN SHIELD ACTIVATED: Profit is ${profit:+.2f}. SL moved to {new_sl} (Risk-Free Trade)."
                     })
                     state["breakeven_set"] = True
+                    state["last_trailed_sl"] = new_sl
                     self.learning_metrics["positions_protected"] += 1
                     self.brain_audits.insert(0, {
                         "time": now_str,
@@ -109,7 +110,9 @@ class AIBrainOverseer:
                     # Lock in at least 50% of floating profit
                     profit_distance = current_price - open_price
                     target_sl = round(open_price + (profit_distance * 0.55), 5 if "USDm" in symbol and "XAU" not in symbol else 2)
-                    if target_sl > current_sl:
+                    min_step = 0.50 if ("XAU" in symbol or "BTC" in symbol) else 0.10
+                    last_trailed = state.get("last_trailed_sl", current_sl)
+                    if target_sl > (last_trailed + min_step) and target_sl > (current_sl + min_step):
                         actions.append({
                             "action": "modify_sl",
                             "ticket": ticket,
@@ -118,7 +121,8 @@ class AIBrainOverseer:
                             "new_tp": current_tp,
                             "reason": f"📈 TRAILING STOP ADVANCE: Locking in 55% of profit (${profit:+.2f}). New SL: {target_sl}."
                         })
-                        state["trail_stage"] += 1
+                        state["last_trailed_sl"] = target_sl
+                        state["trail_stage"] = state.get("trail_stage", 0) + 1
                         self.brain_audits.insert(0, {
                             "time": now_str,
                             "type": "TRAILING_STOP",

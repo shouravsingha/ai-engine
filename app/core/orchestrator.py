@@ -153,7 +153,7 @@ class MasterOrchestrator:
                             # 2. REAL EXECUTION ON EXNESS MT5
                             mt5_res = self.exness.execute_live_order(symbol_exec, "BUY", volume=vol, sl=sl, tp=tp)
                             
-                            if mt5_res.get("status") in ("success", "queued"):
+                            if mt5_res.get("status") == "success":
                                 # 3. Log internal order
                                 order = self.account.open_trade(trade_plan, symbol=symbol_exec)
                                 ticket_no = mt5_res.get("ticket", order["id"])
@@ -168,6 +168,8 @@ class MasterOrchestrator:
                                 self.telegram.send_trade_signal(order, asset=asset_title)
                                 self.webhooks.broadcast_trade(order, asset=asset_title)
                                 self.journal.record_open_trade(ticket_no, symbol_exec, "BUY", vol, entry, sl, tp, "AI Brain Verified OTE Setup")
+                            elif mt5_res.get("status") == "queued":
+                                self.log(f"📋 Trade setup queued for Windows MT5 terminal: {symbol_exec} {vol} Lot")
                             else:
                                 fail_reason = mt5_res.get('comment') or mt5_res.get('message') or 'Rejected'
                                 self.log(f"⚠️ Trade Execution Failed for {symbol_exec}: {fail_reason}")
@@ -185,14 +187,16 @@ class MasterOrchestrator:
         for act in supervision_actions:
             if act["action"] == "modify_sl":
                 m_res = self.exness.modify_position_sl_tp(act["ticket"], act["new_sl"], act.get("new_tp", 0.0))
-                self.send_agent_message("Marcus", "Risk Officer (PA_02)", act["reason"])
-                self.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ DEFENSE TRIGGER: {act['symbol']} #{act['ticket']} protected.")
-                self.telegram.send_message(f"🛡️ <b>AI BRAIN POSITION DEFENSE:</b>\n{act['reason']}")
-                self.journal.record_open_trade(act["ticket"], act["symbol"], "BUY", 0.01, 0.0, act["new_sl"], act.get("new_tp", 0.0), act["reason"])
-            elif act["action"] == "close_profit_book":
+                if m_res.get("status") == "success":
+                    self.send_agent_message("Marcus", "Risk Officer (PA_02)", act["reason"])
+                    self.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ DEFENSE TRIGGER: {act['symbol']} #{act['ticket']} protected.")
+                    self.telegram.send_message(f"🛡️ <b>AI BRAIN POSITION DEFENSE:</b>\n{act['reason']}")
+                    self.journal.record_open_trade(act["ticket"], act["symbol"], "BUY", 0.01, 0.0, act["new_sl"], act.get("new_tp", 0.0), act["reason"])
+            elif act["action"] in ("close_profit_book", "close_position"):
                 c_res = self.exness.close_position(act["ticket"])
-                self.send_agent_message("Alex", "Chief Quant (PA_01)", act["reason"])
-                self.telegram.send_message(f"⚡ <b>SMART PROFIT BOOKED:</b>\n{act['reason']}")
+                if c_res.get("status") == "success":
+                    self.send_agent_message("Alex", "Chief Quant (PA_01)", act["reason"])
+                    self.telegram.send_message(f"⚡ <b>SMART PROFIT BOOKED:</b>\n{act['reason']}")
 
         active_p = matrix["gold"]["price"] if any(t['symbol'] == 'XAUUSDm' for t in self.account.open_trades) else matrix["btc"]["price"]
         closed_trades = self.account.update_open_trades(active_p)

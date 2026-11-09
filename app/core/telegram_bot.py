@@ -109,6 +109,9 @@ Closed At: {datetime.now().strftime('%H:%M:%S UTC')}
                                 reply = self.handle_command(text)
                                 if reply:
                                     self.send_message(reply)
+                    elif res.status_code == 409:
+                        # Another instance polling Telegram; back off gracefully
+                        time.sleep(10)
                 except Exception:
                     pass
                 time.sleep(2)

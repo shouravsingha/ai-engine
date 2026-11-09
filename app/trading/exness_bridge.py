@@ -287,14 +287,18 @@ class ExnessBridge:
             }
             res = mt5.order_send(req)
 
-            # If rejected with unsupported filling mode (retcode 10030), retry with alternative
-            if res and res.retcode == 10030:
+            # If rejected with unsupported filling mode (retcode 10030), retry with alternatives
+            if res and res.retcode in (10030, 10013):
                 alt_filling = mt5.ORDER_FILLING_FOK if filling == mt5.ORDER_FILLING_IOC else mt5.ORDER_FILLING_IOC
                 req["type_filling"] = alt_filling
                 res = mt5.order_send(req)
+                if res and res.retcode in (10030, 10013):
+                    req["type_filling"] = mt5.ORDER_FILLING_RETURN
+                    res = mt5.order_send(req)
 
             if res and res.retcode == mt5.TRADE_RETCODE_DONE:
                 self.refresh_balance()
+                print(f"[MT5 TRADE EXECUTED] #{res.order} {side} {req_vol} {sym} @ {res.price}")
                 return {
                     "status": "success",
                     "ticket": res.order,
@@ -306,10 +310,15 @@ class ExnessBridge:
                     "message": f"Successfully executed {side} {req_vol} {sym} on Exness MT5 (Ticket #{res.order})"
                 }
             else:
+                err_code = res.retcode if res else "None"
+                err_comment = res.comment if res else "Execution rejected by broker"
+                print(f"[MT5 EXECUTION FAILED] Symbol: {sym}, Side: {side}, Retcode: {err_code}, Comment: {err_comment}")
+                if err_code == 10027:
+                    print("⚠️ [MT5 WARNING] Algo Trading is DISABLED in MetaTrader 5! Press 'Algo Trading' button in MT5 (or Ctrl+E) to allow auto trades.")
                 return {
                     "status": "failed",
-                    "retcode": res.retcode if res else "None",
-                    "comment": res.comment if res else "Execution rejected by broker"
+                    "retcode": err_code,
+                    "comment": err_comment
                 }
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -518,23 +527,27 @@ def start_cloud_tunnel_daemon(bridge: ExnessBridge, cloud_url: str = "https://ai
                         for c in commands:
                             action = c.get("action")
                             if action == "execute":
-                                bridge.execute_live_order(
+                                t_res = bridge.execute_live_order(
                                     c.get("symbol", "XAUUSDm"),
                                     c.get("side", "BUY"),
                                     float(c.get("volume", 0.01)),
                                     float(c.get("sl", 0.0)),
                                     float(c.get("tp", 0.0))
                                 )
+                                print(f"[TUNNEL ORDER EXECUTED] {c.get('side')} {c.get('symbol')} -> {t_res.get('status')}: {t_res.get('message', t_res.get('comment'))}")
                             elif action == "modify":
-                                bridge.modify_position_sl_tp(
+                                m_res = bridge.modify_position_sl_tp(
                                     int(c.get("ticket")),
                                     float(c.get("sl", 0.0)),
                                     float(c.get("tp", 0.0))
                                 )
+                                print(f"[TUNNEL SL/TP MODIFIED] Ticket #{c.get('ticket')} -> {m_res.get('status')}")
                             elif action == "close":
-                                bridge.close_position(int(c.get("ticket")))
+                                c_res = bridge.close_position(int(c.get("ticket")))
+                                print(f"[TUNNEL POSITION CLOSED] Ticket #{c.get('ticket')} -> {c_res.get('status')}")
                             elif action == "panic_flat":
-                                bridge.close_all_positions()
+                                p_res = bridge.close_all_positions()
+                                print(f"[TUNNEL PANIC FLAT] -> {p_res.get('status')}")
             except Exception:
                 pass
             time.sleep(1.5)
