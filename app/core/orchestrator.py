@@ -194,6 +194,11 @@ class MasterOrchestrator:
                     self.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ DEFENSE TRIGGER: {act['symbol']} #{act['ticket']} protected.")
                     self.telegram.send_message(f"🛡️ <b>AI POSITION DEFENSE:</b>\n{act['reason']}")
                     self.log(f"🛡️ Position #{act['ticket']} ({act['symbol']}): {act['reason']}")
+                elif m_res.get("retcode") == 10027:
+                    if not getattr(self, "_algo_warned", False):
+                        self.send_agent_message("Marcus", "Risk Officer (PA_02)", "⚠️ MT5 এ 'Algo Trading' (Ctrl+E) বন্ধ রয়েছে। ব্রেকেভেন ও ট্রেইলিং লক করতে টার্মিনালে 'Algo Trading' বাটনটি ক্লিক করে চালু করুন।")
+                        self.log("⚠️ MT5 AutoTrading is disabled by client (Retcode 10027). Please enable Algo Trading in MT5.")
+                        self._algo_warned = True
 
     def start_background_loop(self):
         if self.is_running:

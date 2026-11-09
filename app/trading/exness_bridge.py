@@ -358,10 +358,15 @@ class ExnessBridge:
                     "message": f"Successfully updated #{ticket} SL to {final_sl}"
                 }
             else:
+                err_code = res.retcode if res else "None"
+                err_comment = res.comment if res else "Broker rejected SL/TP update"
+                print(f"[MT5 SL/TP FAILED] Ticket #{ticket} ({sym}) New SL: {final_sl} | Retcode: {err_code} ({err_comment})")
+                if err_code == 10027:
+                    print("⚠️ [MT5 WARNING] Algo Trading is DISABLED in MetaTrader 5! Press 'Algo Trading' button in MT5 (or Ctrl+E) to allow auto trades / SL modifications.")
                 return {
                     "status": "failed",
-                    "retcode": res.retcode if res else "None",
-                    "comment": res.comment if res else "Broker rejected SL/TP update"
+                    "retcode": err_code,
+                    "comment": err_comment
                 }
         except Exception as e:
             return {"status": "error", "message": str(e)}
