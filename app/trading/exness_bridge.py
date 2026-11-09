@@ -18,27 +18,15 @@ class ExnessBridge:
         self.account_id = "434353249"
         self.server = "Exness-MT5Trial7"
         self.balance = 20.21
-        self.equity = 20.48
+        self.equity = 20.21
         self.currency = "USD"
         self.leverage = "1:2000"
-        self.connected = True
+        self.connected = False
         self.live_terminal = False
         self.last_sync = "Initializing..."
         self.status_message = "Ready"
-        self.floating_pnl = 0.27
-        self.open_positions = [
-            {
-                "ticket": 5012444923,
-                "symbol": "EURUSDm",
-                "side": "BUY",
-                "volume": 0.01,
-                "open_price": 1.11559,
-                "current_price": 1.11586,
-                "sl": 1.11462,
-                "tp": 1.12365,
-                "profit": 0.27
-            }
-        ]
+        self.floating_pnl = 0.0
+        self.open_positions = []
         self.last_remote_sync_ts = 0.0
         self.cloud_gateway = CloudMT5Gateway()
         
@@ -66,7 +54,9 @@ class ExnessBridge:
         """Attempts real connection to local MetaTrader 5 Exness terminal."""
         if MT5_AVAILABLE:
             try:
-                if mt5.initialize():
+                # Initialize or verify existing connection
+                initialized = mt5.initialize()
+                if initialized:
                     acc_info = mt5.account_info()
                     if acc_info:
                         self.account_id = str(acc_info.login)
@@ -84,12 +74,12 @@ class ExnessBridge:
             except Exception as e:
                 print(f"MT5 Init Note: {e}")
 
-        # Fallback to persistent Exness profile mode
-        self.connected = True
+        # Fallback state when MT5 terminal is not linked
+        self.connected = False
         self.live_terminal = False
         self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-        self.status_message = f"Exness-MT5Trial7 Synced (Account #{self.account_id})"
-        return True
+        self.status_message = f"Waiting for MT5 Terminal (Account #{self.account_id})"
+        return False
 
     def refresh_balance(self):
         """Pulls latest tick balance, equity, margin, and live open positions from MT5 or Cloud Gateway."""
@@ -108,8 +98,11 @@ class ExnessBridge:
 
         if MT5_AVAILABLE:
             try:
-                mt5.initialize()
                 acc_info = mt5.account_info()
+                if not acc_info:
+                    mt5.initialize()
+                    acc_info = mt5.account_info()
+
                 if acc_info:
                     self.account_id = str(acc_info.login)
                     self.server = acc_info.server
@@ -122,46 +115,51 @@ class ExnessBridge:
                     self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
                     self.status_message = f"LIVE MT5 CONNECTED (Account #{self.account_id} on {self.server})"
 
-                # Get open MT5 positions
-                positions = mt5.positions_get()
-                self.open_positions = []
-                total_profit = 0.0
-                if positions is not None:
-                    for p in positions:
-                        side = "BUY" if p.type == 0 else "SELL"
-                        self.open_positions.append({
-                            "ticket": p.ticket,
-                            "symbol": p.symbol,
-                            "side": side,
-                            "volume": p.volume,
-                            "open_price": p.price_open,
-                            "current_price": p.price_current,
-                            "sl": p.sl,
-                            "tp": p.tp,
-                            "profit": round(float(p.profit), 2)
-                        })
-                        total_profit += float(p.profit)
-                self.floating_pnl = round(total_profit, 2)
-            except Exception:
+                    # Get all open MT5 positions
+                    positions = mt5.positions_get()
+                    new_positions = []
+                    total_profit = 0.0
+                    if positions is not None:
+                        for p in positions:
+                            side = "BUY" if p.type == 0 else "SELL"
+                            new_positions.append({
+                                "ticket": p.ticket,
+                                "symbol": p.symbol,
+                                "side": side,
+                                "volume": p.volume,
+                                "open_price": p.price_open,
+                                "current_price": p.price_current,
+                                "sl": p.sl,
+                                "tp": p.tp,
+                                "profit": round(float(p.profit), 2)
+                            })
+                            total_profit += float(p.profit)
+                        self.open_positions = new_positions
+                        self.floating_pnl = round(total_profit, 2)
+                else:
+                    self.live_terminal = False
+                    self.connected = False
+            except Exception as e:
                 pass
         else:
             # Cloud (Render) mode without direct Windows MT5
-            import random
             now_ts = datetime.now().timestamp()
-            # If recent sync from local Windows MT5 occurred within 45s, preserve real data
-            if hasattr(self, 'last_remote_sync_ts') and (now_ts - self.last_remote_sync_ts < 45):
-                return
-            
-            # Dynamic tick pulse so cloud numbers are always alive & moving
-            if self.open_positions:
-                tick_delta = round(random.uniform(-0.02, 0.03), 2)
-                for p in self.open_positions:
-                    new_prof = round(max(0.08, float(p.get("profit", 0.25)) + tick_delta), 2)
-                    p["profit"] = new_prof
-                    p["current_price"] = round(float(p["open_price"]) + (new_prof * 0.0001), 5)
-                self.floating_pnl = round(sum(float(p["profit"]) for p in self.open_positions), 2)
-                self.equity = round(self.balance + self.floating_pnl, 2)
-                self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+            time_since_sync = now_ts - getattr(self, 'last_remote_sync_ts', 0.0)
+
+            # Check if live tunnel from laptop sent a heartbeat within the last 15 seconds
+            if getattr(self, 'last_remote_sync_ts', 0.0) > 0 and time_since_sync <= 15.0:
+                self.connected = True
+                self.live_terminal = True
+                self.status_message = f"🟢 LIVE MT5 TUNNEL (Account #{self.account_id} on {self.server})"
+            else:
+                self.connected = False
+                self.live_terminal = False
+                if getattr(self, 'last_remote_sync_ts', 0.0) == 0.0:
+                    self.status_message = "🔴 TUNNEL WAITING (Start start_ai_trader.bat on your laptop)"
+                    self.open_positions = []
+                    self.floating_pnl = 0.0
+                else:
+                    self.status_message = f"🔴 TUNNEL DISCONNECTED (Laptop Closed/Offline - Last seen {int(time_since_sync)}s ago)"
 
     def execute_live_order(self, symbol: str, side: str, volume: float = 0.01, sl: float = 0.0, tp: float = 0.0) -> Dict[str, Any]:
         """Executes a real order directly on the Exness MT5 terminal or 24/7 Cloud Gateway."""
@@ -357,6 +355,7 @@ def start_cloud_tunnel_daemon(bridge: ExnessBridge, cloud_url: str = "https://ai
     On Windows machines with physical MT5 running, continuously streams 
     the real MT5 balance, equity, and positions to Render cloud every 1.5s.
     Also polls Render for pending orders submitted from anywhere in the world.
+    Keeps Windows active so that the tunnel runs uninterrupted even when the laptop lid is closed.
     """
     if not MT5_AVAILABLE:
         return
@@ -366,10 +365,27 @@ def start_cloud_tunnel_daemon(bridge: ExnessBridge, cloud_url: str = "https://ai
     import requests
 
     def _sync_worker():
+        # Prevent Windows from sleeping or suspending threads when laptop lid closes
+        try:
+            import ctypes
+            # ES_CONTINUOUS (0x80000000) | ES_SYSTEM_REQUIRED (0x00000001) | ES_AWAYMODE_REQUIRED (0x00000040)
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000040)
+            print("[TUNNEL DAEMON] Windows Anti-Sleep / Away Mode activated (Runs with lid closed).")
+        except Exception:
+            pass
+
         time.sleep(2.0)
         print(f"[TUNNEL DAEMON] Windows-to-Render MT5 Cloud Bridge initiated for {cloud_url}")
+        
+        reconnect_counter = 0
         while True:
             try:
+                # Continuous auto-reconnection if MT5 is not yet initialized or disconnected
+                if not bridge.live_terminal:
+                    reconnect_counter += 1
+                    if reconnect_counter % 3 == 0:
+                        bridge.try_initialize_mt5()
+
                 if bridge.live_terminal:
                     bridge.refresh_balance()
                     payload = {
@@ -384,7 +400,7 @@ def start_cloud_tunnel_daemon(bridge: ExnessBridge, cloud_url: str = "https://ai
                             "open_positions": bridge.open_positions
                         }
                     }
-                    res = requests.post(f"{cloud_url}/api/bridge/sync", json=payload, timeout=3.5)
+                    res = requests.post(f"{cloud_url}/api/bridge/sync", json=payload, timeout=4.0)
                     if res.status_code == 200:
                         cmd_data = res.json()
                         commands = cmd_data.get("commands", [])

@@ -817,7 +817,7 @@ def index():
                 <span>Equity: <strong id="nav-exness-equity" style="color: #10b981; font-weight: 800;">$20.21</strong></span>
                 <span>PnL: <strong id="nav-exness-pnl" style="color: #facc15;">+$0.00</strong></span>
                 <span style="background: #0f172a; border: 1px solid #334155; padding: 2px 8px; border-radius: 4px; font-size: 10.5px;">
-                    <span id="nav-open-count" style="color: #38bdf8; font-weight: 800;">1 Live Order</span>
+                    <span id="nav-open-count" style="color: #38bdf8; font-weight: 800;">0 Live Orders</span>
                 </span>
             </div>
 
@@ -867,16 +867,15 @@ def index():
                 <!-- Subheader Status Line with Live Updating Exness Metrics -->
                 <div class="of-subhead" id="subhead-exness-detail">
                     <div class="subhead-row-1" style="display: flex; align-items: center; gap: 8px;">
-                        <span style="color: #10b981; font-weight: 800;">● EXNESS MT5 LIVE (#434353249):</span>
+                        <span id="subhead-status-badge" style="color: #10b981; font-weight: 800;">● EXNESS MT5 LIVE (#434353249):</span>
                         <span>Balance: <strong style="color: var(--of-blue); font-size: 12px;" id="subhead-bal">$20.21 USD</strong></span>
-                        <span>Equity: <strong id="subhead-eq" style="color: var(--of-green-line); font-size: 12px;">$20.33 USD</strong></span>
-                        <span>PnL: <strong id="subhead-pnl" style="color: #10b981; font-size: 12px;">+$0.12 USD</strong></span>
+                        <span>Equity: <strong id="subhead-eq" style="color: var(--of-green-line); font-size: 12px;">$20.21 USD</strong></span>
+                        <span>PnL: <strong id="subhead-pnl" style="color: #10b981; font-size: 12px;">+$0.00 USD</strong></span>
                         <span style="color: var(--of-text-muted);">| 12 up · 8 flat · 10 down</span>
                     </div>
                     <div class="subhead-row-2" style="display: flex; align-items: center; gap: 8px;">
                         <span id="subhead-deal" style="background: var(--of-card); border: 1px solid var(--of-border); padding: 3px 8px; border-radius: 6px; font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--of-blue); display: flex; align-items: center; gap: 6px;">
-                            Active: EURUSDm BUY 0.01 (#5012444923)
-                            <button onclick="closeTrade(5012444923)" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444; border-radius: 4px; padding: 1px 5px; font-size: 9px; cursor: pointer;">✕ Close</button>
+                            <span style="color:var(--of-text-muted);">0 Active MT5 Positions · Scanning OrderFlow</span>
                         </span>
                         <button class="quick-gold-btn" onclick="quickOpenTrade('XAUUSDm', 'BUY')" style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: #f59e0b; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 10px; cursor: pointer;">
                             ⚡ Quick Buy Gold
@@ -1736,13 +1735,29 @@ def index():
                             subPnl.style.color = pnl >= 0 ? '#10b981' : '#ef4444';
                         }
 
+                        // Subhead Live Connection Indicator
+                        const statusBadge = document.getElementById('subhead-status-badge');
+                        if (statusBadge) {
+                            if (d.exness.live_terminal) {
+                                statusBadge.innerHTML = `<span style="color: #10b981; font-weight: 800;">● EXNESS MT5 LIVE (#${d.exness.account_id}):</span>`;
+                            } else {
+                                statusBadge.innerHTML = `<span style="color: #ef4444; font-weight: 800;" title="Ensure start_ai_trader.bat is running on your laptop">● MT5 OFFLINE / LAPTOP CLOSED:</span>`;
+                            }
+                        }
+
                         const subDeal = document.getElementById('subhead-deal');
                         if (subDeal) {
-                            if (openCount > 0 && d.exness.open_positions[0]) {
+                            if (openCount === 0) {
+                                subDeal.innerHTML = `<span style="color:var(--of-text-muted);">0 Active MT5 Positions · Scanning OrderFlow</span>`;
+                            } else if (openCount === 1 && d.exness.open_positions[0]) {
                                 const pos = d.exness.open_positions[0];
                                 subDeal.innerHTML = `Active: <b style="color:var(--of-blue);">${pos.symbol}</b> ${pos.side} ${pos.volume} (<span style="color:${pos.profit >= 0 ? '#10b981' : '#ef4444'}; font-weight:800;">${pos.profit >= 0 ? '+' : ''}$${pos.profit}</span>) <button onclick="closeTrade(${pos.ticket})" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444; border-radius: 4px; padding: 1px 5px; font-size: 9px; cursor: pointer; margin-left: 4px;">✕ Close</button>`;
                             } else {
-                                subDeal.innerHTML = `<span style="color:var(--of-text-muted);">0 Active MT5 Positions · Scanning OrderFlow</span>`;
+                                // Multiple positions active: render all neatly
+                                const posListHtml = d.exness.open_positions.map(pos => 
+                                    `<span><b style="color:var(--of-blue);">${pos.symbol}</b> ${pos.side} ${pos.volume} (<span style="color:${pos.profit >= 0 ? '#10b981' : '#ef4444'}; font-weight:800;">${pos.profit >= 0 ? '+' : ''}$${pos.profit}</span>) <button onclick="closeTrade(${pos.ticket})" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444; border-radius: 4px; padding: 0 4px; font-size: 8.5px; cursor: pointer;">✕</button></span>`
+                                ).join(' <span style="color:var(--of-border-strong);">|</span> ');
+                                subDeal.innerHTML = `<span style="font-weight:800; color:#38bdf8; margin-right:4px;">[${openCount} Trades]:</span> ${posListHtml}`;
                             }
                         }
 

@@ -12,7 +12,8 @@ if exist "C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe" (
     start "" "C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
 )
 
-timeout /t 2 /nobreak >nul
+echo Waiting for MT5 Terminal to connect to Exness broker...
+timeout /t 5 /nobreak >nul
 
 echo [2/2] Launching AI Engine, OrderFlow Matrix & Cloud Tunnel...
 cd /d "C:\Users\HP\ai-engine"
