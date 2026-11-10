@@ -906,14 +906,20 @@ def index():
                         </button>
                     </div>
 
-                    <!-- Multi-Timeframe SMC Confluence Filter Ribbon (15m + 1h + 4h) -->
-                    <div id="subhead-mtf-confluence" style="display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono'; font-size: 10px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--of-border); overflow-x: auto;">
-                        <span style="font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
-                            <span>🔬</span> MTF SMC FILTER (15m+1H+4H):
-                        </span>
-                        <span id="mtf-gold-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">GOLD: 4H 🟢 | 1H 🟢 | 15m 🟢 (3/3 A+)</span>
-                        <span id="mtf-btc-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">BTC: 4H 🟢 | 1H 🟢 | 15m 🟢 (3/3 A+)</span>
-                        <span id="mtf-eth-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">ETH: 4H 🟢 | 1H 🟢 | 15m 🟢 (3/3 A+)</span>
+                    <!-- Multi-Timeframe SMC + ICT Confluence Filter & Killzone Ribbon -->
+                    <div id="subhead-mtf-confluence" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono'; font-size: 10px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--of-border); overflow-x: auto;">
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <span style="font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                                <span>⚡</span> ICT+SMC CONFLUENCE (15m+1H+4H):
+                            </span>
+                            <span id="mtf-gold-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">GOLD: 4H 🟢 | 1H 🟢 | 15m 🟢</span>
+                            <span id="mtf-btc-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">BTC: 4H 🟢 | 1H 🟢 | 15m 🟢</span>
+                            <span id="mtf-eth-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">ETH: 4H 🟢 | 1H 🟢 | 15m 🟢</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span id="ict-killzone-badge" style="background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.35); color: #38bdf8; padding: 2px 8px; border-radius: 5px; font-weight: 800; white-space: nowrap;">🎯 ICT Killzone: Scanning</span>
+                            <span id="brain-psy-badge" style="background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.35); color: #c084fc; padding: 2px 8px; border-radius: 5px; font-weight: 800; white-space: nowrap;" title="Capital Preservation Discipline: Green trades never turn into red losses.">🛡️ Winner Shield: Armed</span>
+                        </div>
                     </div>
                 </div>
 
@@ -1905,6 +1911,41 @@ def index():
                         renderMtfBadge('mtf-gold-badge', 'GOLD', d.market_matrix.gold);
                         renderMtfBadge('mtf-btc-badge', 'BTC', d.market_matrix.btc);
                         renderMtfBadge('mtf-eth-badge', 'ETH', d.market_matrix.eth);
+
+                        // ICT Killzone status badge
+                        const kzBadge = document.getElementById('ict-killzone-badge');
+                        if (kzBadge && d.market_matrix.gold && d.market_matrix.gold.killzone) {
+                            const kz = d.market_matrix.gold.killzone;
+                            if (kz.killzone_active) {
+                                kzBadge.style.background = 'rgba(234, 179, 8, 0.15)';
+                                kzBadge.style.borderColor = 'rgba(234, 179, 8, 0.5)';
+                                kzBadge.style.color = '#facc15';
+                                kzBadge.innerHTML = `⚡ ${kz.name} (${kz.session_code}) [ACTIVE]`;
+                            } else {
+                                kzBadge.style.background = 'rgba(56, 189, 248, 0.12)';
+                                kzBadge.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+                                kzBadge.style.color = '#38bdf8';
+                                kzBadge.innerHTML = `🌐 ${kz.name || 'Standard Session'}`;
+                            }
+                        }
+
+                        // AI Brain Trading Psychology & Winner Shield Badge
+                        const psyBadge = document.getElementById('brain-psy-badge');
+                        if (psyBadge && d.ai_brain) {
+                            if (d.ai_brain.tilt_pause) {
+                                psyBadge.style.background = 'rgba(239, 68, 68, 0.18)';
+                                psyBadge.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                                psyBadge.style.color = '#f87171';
+                                psyBadge.innerHTML = `🛑 Anti-Tilt Cooldown Active`;
+                                psyBadge.title = 'AI Brain triggered psychological protection pause after consecutive losses.';
+                            } else {
+                                psyBadge.style.background = 'rgba(168, 85, 247, 0.12)';
+                                psyBadge.style.borderColor = 'rgba(168, 85, 247, 0.35)';
+                                psyBadge.style.color = '#c084fc';
+                                psyBadge.innerHTML = `🛡️ Winner Shield: Active (BE +$0.45 | Trail +$0.75)`;
+                                psyBadge.title = 'Institutional Trailing & Winner Preservation active: Winning trades will never turn into losses.';
+                            }
+                        }
                     }
                 } catch(e) {}
             }

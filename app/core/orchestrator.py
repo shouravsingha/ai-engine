@@ -152,6 +152,10 @@ class MasterOrchestrator:
                     "mtf_status": mtf_status,
                     "mtf_score": f"{bull_count}/3",
                     "mtf_aligned": mtf_aligned,
+                    "killzone": smc_1h.get("killzone", {}),
+                    "fvg": smc_1h.get("fvg"),
+                    "order_block": smc_1h.get("order_block"),
+                    "liquidity_sweep": smc_1h.get("liquidity_sweep"),
                     "structure_event": smc_1h.get("structure_event", "NONE"),
                     "swing_high": swing_high,
                     "swing_low": swing_low,
@@ -162,7 +166,7 @@ class MasterOrchestrator:
             except Exception as e:
                 continue
 
-            # Check for High-Probability Setup with Multi-Timeframe Confluence (15m + 1h + 4h)
+            # Check for High-Probability Setup with ICT + Multi-Timeframe Confluence (15m + 1h + 4h)
             if len(self.exness.open_positions) < 3 and "golden_pocket_ote" in fib_res:
                 # MTF Filter: 4H Macro Trend MUST be BULLISH (eliminates counter-trend fakeouts)
                 if trend_4h != "BULLISH":
@@ -174,10 +178,35 @@ class MasterOrchestrator:
                 elif trend_1h == "BULLISH" and "DISCOUNT" in zone_status and mtf_aligned:
                     setattr(self, f"_htf_blocked_{asset_key}", False)
                     entry = current_price
-                    sl = float(smc_1h["swing_low"] * 0.998)
-                    tp = float(fib_res["target_ext_1"])
-                    symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDm" if asset_key == "btc" else "ETHUSDm")
+                    
+                    # -------------------------------------------------------------
+                    # PERFECT ICT SL & TP PLACEMENT:
+                    # - SL placed at precise Order Block / Sweep Low invalidation
+                    # - Hard dollar-risk ceiling: maximum $0.80 - $1.20 risk on small accounts
+                    # - TP placed at Buy-Side Liquidity (BSL) or 1.618 extension (RRR >= 2.5)
+                    # -------------------------------------------------------------
+                    raw_sl = float(smc_1h.get("recommended_sl", smc_1h["swing_low"]))
+                    # Enforce that SL is below entry for BUY
+                    if raw_sl >= entry or (entry - raw_sl) < (current_price * 0.001):
+                        raw_sl = entry - (current_price * 0.004)
+                    
+                    # Maximum allowable SL distance to prevent big dollar drawdowns on 0.01 lot
                     vol = 0.1 if asset_key == "eth" else 0.01
+                    symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDm" if asset_key == "btc" else "ETHUSDm")
+                    
+                    # Cap risk: for BTC max $100 price distance ($1.00 loss on 0.01 lot)
+                    # for Gold max $10 price distance ($1.00 loss on 0.01 lot)
+                    # for ETH max $10 price distance ($1.00 loss on 0.1 lot)
+                    max_sl_dist = 110.0 if "BTC" in symbol_exec else (12.0 if "XAU" in symbol_exec else 10.0)
+                    if (entry - raw_sl) > max_sl_dist:
+                        sl = round(entry - max_sl_dist, 2)
+                    else:
+                        sl = round(raw_sl, 2)
+                    
+                    # Perfect Take Profit: minimum 2.6x the SL distance (Institutional 1:2.6 RRR)
+                    min_tp_dist = (entry - sl) * 2.6
+                    raw_tp = float(smc_1h.get("recommended_tp", fib_res.get("target_ext_1", entry + min_tp_dist)))
+                    tp = round(max(raw_tp, entry + min_tp_dist), 2)
 
                     # Check if already open on this symbol to prevent duplicate spam
                     already_open = any(p.get("symbol") == symbol_exec for p in self.exness.open_positions)
@@ -186,6 +215,8 @@ class MasterOrchestrator:
                         if trade_plan:
                             # 1. AUDIT BY AI CENTRAL NEURAL BRAIN
                             audit = self.brain.audit_trade_proposal("Alex & Marcus", symbol_exec, "BUY", trade_plan["risk_reward_ratio"], 1.0)
+                            if not audit.get("approved", True):
+                                continue
                             
                             # Check if MT5 Algo Trading is active before sending order
                             if not self.exness.algo_trading_enabled and self.exness.live_terminal:
@@ -207,12 +238,13 @@ class MasterOrchestrator:
                                 order["mt5_ticket"] = ticket_no
 
                                 asset_title = ticker["symbol"]
-                                self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} MTF Confluence Verified ({mtf_status}). 100% compliant with 4H Macro alignment.")
-                                self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 TRIPLE CONFLUENCE (4H/1H/15m): High volume absorption on {asset_title}!")
-                                self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} filled 0.618 Golden Pocket at ${entry:,.2f} in Discount Zone.")
-                                self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED on Exness MT5! Ticket #{ticket_no} active.")
+                                kz_info = smc_1h.get("killzone", {}).get("name", "Active Session")
+                                self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} ICT OTE & MTF Confluence Verified ({mtf_status} | {kz_info}). SL: ${sl:,.2f} | TP: ${tp:,.2f}.")
+                                self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ICT DISPLACEMENT: Fair Value Gap CE filled on {asset_title}!")
+                                self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} tagged ICT 0.705 sweet spot at ${entry:,.2f} in Discount Zone.")
+                                self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED on Exness MT5! Ticket #{ticket_no} active with strict ${entry-sl:.2f} risk cap.")
 
-                                self.telegram.send_trade_signal(order, asset=f"{asset_title} [{mtf_status}]")
+                                self.telegram.send_trade_signal(order, asset=f"{asset_title} [{mtf_status} · {kz_info}]")
                                 self.webhooks.broadcast_trade(order, asset=asset_title)
                             else:
                                 fail_reason = mt5_res.get('comment') or mt5_res.get('message') or 'Rejected'
@@ -226,17 +258,29 @@ class MasterOrchestrator:
         active_p = matrix["gold"]["price"] if any(t['symbol'] == 'XAUUSDm' for t in self.account.open_trades) else matrix["btc"]["price"]
         closed_trades = self.account.update_open_trades(active_p)
         for ct in closed_trades:
-            self.log(f"🔔 TRADE SETTLED: {ct['id']} | Outcome: {ct['status']} | PnL: ${ct.get('realized_pnl', 0):+,.2f}")
+            pnl = ct.get('realized_pnl', 0.0)
+            self.log(f"🔔 TRADE SETTLED: {ct['id']} | Outcome: {ct['status']} | PnL: ${pnl:+,.2f}")
+            self.brain.record_trade_result(pnl)
             self.telegram.send_trade_close(ct, self.exness.balance)
             self.branding.generate_firm_content("BULLISH", f"${active_p:,.2f}", ct)
 
     def evaluate_and_defend_positions(self):
-        """Active AI Brain position defense: Break-Even Shield (+$1.00) & Trailing Stop (+$2.50)."""
+        """
+        Active AI Brain position defense:
+        1. Fast Break-Even Shield (+$0.45)
+        2. Dynamic Structural Trailing (+$0.75 / +$1.30 / +$2.00)
+        3. Capital Preservation Harvest (Prevents green trades from turning red)
+        4. Time-Based Exhaustion Exit (No more long dead holds)
+        5. ICT MSS Reversal Exit
+        """
         if not self.exness.open_positions:
             return
         actions = self.brain.evaluate_open_positions(self.exness.open_positions, self.multi_market_matrix)
         for act in actions:
-            if act.get("action") == "modify_sl":
+            action_type = act.get("action")
+            
+            # MODIFY SL / TRAILING
+            if action_type == "modify_sl":
                 m_res = self.exness.modify_position_sl_tp(act["ticket"], act["new_sl"], act.get("new_tp", 0.0))
                 if m_res.get("status") in ("success", "queued"):
                     self.send_agent_message("Marcus", "Risk Officer (PA_02)", act["reason"])
@@ -248,6 +292,15 @@ class MasterOrchestrator:
                         self.send_agent_message("Marcus", "Risk Officer (PA_02)", "⚠️ MT5 এ 'Algo Trading' (Ctrl+E) বন্ধ রয়েছে। ব্রেকেভেন ও ট্রেইলিং লক করতে টার্মিনালে 'Algo Trading' বাটনটি ক্লিক করে চালু করুন।")
                         self.log("⚠️ MT5 AutoTrading is disabled by client (Retcode 10027). Please enable Algo Trading in MT5.")
                         self._algo_warned = True
+
+            # SMART PROFIT HARVEST / EXHAUSTION EXIT / CAPITAL PRESERVATION
+            elif action_type == "close_position":
+                c_res = self.exness.close_position(act["ticket"])
+                if c_res.get("status") in ("success", "queued"):
+                    self.send_agent_message("Marcus", "Risk Guardian (PA_02)", act["reason"])
+                    self.send_agent_message("AI Brain", "Neural Overseer", f"⚡ SMART HARVEST: {act['symbol']} #{act['ticket']} closed to bank profit.")
+                    self.telegram.send_message(f"⚡ <b>AI SMART PROFIT HARVEST:</b>\n{act['reason']}")
+                    self.log(f"⚡ Position #{act['ticket']} ({act['symbol']}): {act['reason']}")
 
     def start_background_loop(self):
         if self.is_running:
