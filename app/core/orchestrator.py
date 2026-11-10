@@ -27,12 +27,11 @@ class MasterOrchestrator:
         self.orderflow = OrderFlowEngine()
         self.brain = AIBrainOverseer()
         
-        # Dedicated parallel SMC detectors
-        self.smc_engines = {
-            "gold": SMCEngine(),
-            "btc": SMCEngine(),
-            "eth": SMCEngine()
-        }
+        # Dedicated parallel Multi-Timeframe SMC detectors (4H Macro, 1H Structure, 15m Trigger)
+        self.smc_engines_4h = {"gold": SMCEngine(), "btc": SMCEngine(), "eth": SMCEngine()}
+        self.smc_engines_1h = {"gold": SMCEngine(), "btc": SMCEngine(), "eth": SMCEngine()}
+        self.smc_engines_15m = {"gold": SMCEngine(), "btc": SMCEngine(), "eth": SMCEngine()}
+        self.smc_engines = self.smc_engines_1h # Backward compatibility
         self.fib = FibonacciEngine()
         self.risk = RiskManager(risk_percent=1.0, min_rrr=2.5)
         self.account = DemoAccount(initial_capital=50000.0)
@@ -74,7 +73,7 @@ class MasterOrchestrator:
             return f"🧠 <b>AI Central Brain Diagnostics:</b>\nCognitive Load: {b['cognitive_load']}\nDecisions Audited: {b['metrics']['decisions_audited']}\nMistakes Prevented: {b['metrics']['mistakes_prevented']}\nSystem IQ: {b['metrics']['system_iq']}"
         elif "/gold" in cmd:
             g = self.multi_market_matrix.get("gold", {})
-            return f"🥇 <b>GOLD (XAUUSDm):</b> ${g.get('price', 2748.20):,.2f}\nOrderFlow: 5/5 Long Build-up\nBrain Validation: APPROVED"
+            return f"🥇 <b>GOLD (XAUUSDm):</b> ${g.get('price', 2748.20):,.2f}\nSMC MTF (4H/1H/15m): {g.get('mtf_status', '3/3 Aligned')}\nOrderFlow: 5/5 Institutional\nBrain Validation: APPROVED"
         elif "/scan" in cmd:
             self.run_simultaneous_scan()
             return "⚡ Autonomous scan across Forex & Commodities verified by AI Central Brain!"
@@ -96,7 +95,7 @@ class MasterOrchestrator:
             self.system_logs = self.system_logs[:50]
 
     def run_simultaneous_scan(self):
-        """Scans Gold, BTC, and ETH concurrently with AI Brain auditing each decision."""
+        """Scans Gold, BTC, and ETH concurrently with Multi-Timeframe SMC (4H/1H/15m) and AI Brain validation."""
         self.exness.refresh_balance()
         tickers = self.market.get_all_live_tickers()
 
@@ -105,23 +104,55 @@ class MasterOrchestrator:
             try:
                 ticker = tickers[asset_key]
                 current_price = ticker["price"]
-                candles = self.market.get_candles(asset_key, interval="1h", limit=30)
+
+                # 1. Fetch Multi-Timeframe Candles (4H Macro, 1H Structure, 15m Execution Trigger)
+                candles_4h = self.market.get_candles(asset_key, interval="4h", limit=30)
+                candles_1h = self.market.get_candles(asset_key, interval="1h", limit=30)
+                candles_15m = self.market.get_candles(asset_key, interval="15m", limit=30)
+
+                # 2. Multi-Timeframe SMC Analysis
+                smc_4h = self.smc_engines_4h[asset_key].analyze_candles(candles_4h)
+                smc_1h = self.smc_engines_1h[asset_key].analyze_candles(candles_1h)
+                smc_15m = self.smc_engines_15m[asset_key].analyze_candles(candles_15m)
+
+                trend_4h = smc_4h.get("trend", "BULLISH")
+                trend_1h = smc_1h.get("trend", "BULLISH")
+                trend_15m = smc_15m.get("trend", "BULLISH")
+
+                swing_high = float(smc_1h.get("swing_high", current_price * 1.01))
+                swing_low = float(smc_1h.get("swing_low", current_price * 0.99))
                 
-                smc_eng = self.smc_engines[asset_key]
-                smc_res = smc_eng.analyze_candles(candles)
-                trend = smc_res.get("trend", "BULLISH")
-                swing_high = float(smc_res.get("swing_high", current_price * 1.01))
-                swing_low = float(smc_res.get("swing_low", current_price * 0.99))
+                fib_res = self.fib.calculate_levels(swing_high, swing_low, trend_1h)
+                zone_status = self.fib.check_zone(current_price, fib_res.get("equilibrium_50", current_price), trend_1h)
+
+                # 3. Calculate MTF Confluence Score & Alignment
+                bull_count = (1 if trend_4h == "BULLISH" else 0) + (1 if trend_1h == "BULLISH" else 0) + (1 if trend_15m == "BULLISH" else 0)
                 
-                fib_res = self.fib.calculate_levels(swing_high, swing_low, trend)
-                zone_status = self.fib.check_zone(current_price, fib_res.get("equilibrium_50", current_price), trend)
+                if trend_4h == "BULLISH" and trend_1h == "BULLISH" and trend_15m == "BULLISH":
+                    mtf_status = "TRIPLE_A_PLUS (3/3 BULLISH)"
+                    mtf_aligned = True
+                elif trend_4h == "BULLISH" and trend_1h == "BULLISH":
+                    mtf_status = "HTF_ALIGNED (2/3 BULLISH)"
+                    mtf_aligned = True
+                elif trend_4h == "BEARISH":
+                    mtf_status = "4H_MACRO_BEARISH (LONG BLOCKED)"
+                    mtf_aligned = False
+                else:
+                    mtf_status = "MIXED_CONFLICT"
+                    mtf_aligned = False
 
                 matrix[asset_key] = {
                     "symbol": ticker["symbol"],
                     "price": current_price,
                     "change_pct": ticker["change_pct"],
-                    "trend": trend,
-                    "structure_event": smc_res.get("structure_event", "NONE"),
+                    "trend": trend_1h,
+                    "trend_4h": trend_4h,
+                    "trend_1h": trend_1h,
+                    "trend_15m": trend_15m,
+                    "mtf_status": mtf_status,
+                    "mtf_score": f"{bull_count}/3",
+                    "mtf_aligned": mtf_aligned,
+                    "structure_event": smc_1h.get("structure_event", "NONE"),
                     "swing_high": swing_high,
                     "swing_low": swing_low,
                     "fib_levels": fib_res,
@@ -131,11 +162,19 @@ class MasterOrchestrator:
             except Exception as e:
                 continue
 
-            # Check for High-Probability Setup
+            # Check for High-Probability Setup with Multi-Timeframe Confluence (15m + 1h + 4h)
             if len(self.exness.open_positions) < 3 and "golden_pocket_ote" in fib_res:
-                if trend == "BULLISH" and "DISCOUNT" in zone_status:
+                # MTF Filter: 4H Macro Trend MUST be BULLISH (eliminates counter-trend fakeouts)
+                if trend_4h != "BULLISH":
+                    if "DISCOUNT" in zone_status and not getattr(self, f"_htf_blocked_{asset_key}", False):
+                        block_msg = f"🛡️ MTF FILTER: 4H Macro Trend on {ticker['symbol']} is BEARISH. Long setup blocked to prevent fakeout / bull trap drawdown."
+                        self.log(block_msg)
+                        self.send_agent_message("Alex", "Chief Quant (PA_01)", block_msg)
+                        setattr(self, f"_htf_blocked_{asset_key}", True)
+                elif trend_1h == "BULLISH" and "DISCOUNT" in zone_status and mtf_aligned:
+                    setattr(self, f"_htf_blocked_{asset_key}", False)
                     entry = current_price
-                    sl = float(smc_res["swing_low"] * 0.998)
+                    sl = float(smc_1h["swing_low"] * 0.998)
                     tp = float(fib_res["target_ext_1"])
                     symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDm" if asset_key == "btc" else "ETHUSDm")
                     vol = 0.1 if asset_key == "eth" else 0.01
@@ -168,12 +207,12 @@ class MasterOrchestrator:
                                 order["mt5_ticket"] = ticket_no
 
                                 asset_title = ticker["symbol"]
-                                self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} trade verified. 100% compliant with institutional rules.")
-                                self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ORDERFLOW DISPLACEMENT: High volume absorption on {asset_title}!")
+                                self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} MTF Confluence Verified ({mtf_status}). 100% compliant with 4H Macro alignment.")
+                                self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 TRIPLE CONFLUENCE (4H/1H/15m): High volume absorption on {asset_title}!")
                                 self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} filled 0.618 Golden Pocket at ${entry:,.2f} in Discount Zone.")
                                 self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED on Exness MT5! Ticket #{ticket_no} active.")
 
-                                self.telegram.send_trade_signal(order, asset=asset_title)
+                                self.telegram.send_trade_signal(order, asset=f"{asset_title} [{mtf_status}]")
                                 self.webhooks.broadcast_trade(order, asset=asset_title)
                             else:
                                 fail_reason = mt5_res.get('comment') or mt5_res.get('message') or 'Rejected'

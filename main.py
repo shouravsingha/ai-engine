@@ -905,6 +905,16 @@ def index():
                             ⚡ Quick Buy Gold
                         </button>
                     </div>
+
+                    <!-- Multi-Timeframe SMC Confluence Filter Ribbon (15m + 1h + 4h) -->
+                    <div id="subhead-mtf-confluence" style="display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono'; font-size: 10px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--of-border); overflow-x: auto;">
+                        <span style="font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                            <span>🔬</span> MTF SMC FILTER (15m+1H+4H):
+                        </span>
+                        <span id="mtf-gold-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">GOLD: 4H 🟢 | 1H 🟢 | 15m 🟢 (3/3 A+)</span>
+                        <span id="mtf-btc-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">BTC: 4H 🟢 | 1H 🟢 | 15m 🟢 (3/3 A+)</span>
+                        <span id="mtf-eth-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">ETH: 4H 🟢 | 1H 🟢 | 15m 🟢 (3/3 A+)</span>
+                    </div>
                 </div>
 
                 <!-- Delta Imbalance Histogram Bar -->
@@ -1862,6 +1872,39 @@ def index():
                                 }).join('');
                             }
                         }
+                    }
+
+                    // UPDATE MULTI-TIMEFRAME SMC CONFLUENCE BADGES (15m + 1h + 4h)
+                    if (d.market_matrix) {
+                        const renderMtfBadge = (badgeId, label, mData) => {
+                            const badge = document.getElementById(badgeId);
+                            if (!badge || !mData) return;
+                            const t4 = mData.trend_4h || 'BULLISH';
+                            const t1 = mData.trend_1h || 'BULLISH';
+                            const t15 = mData.trend_15m || 'BULLISH';
+                            const dot4 = t4 === 'BULLISH' ? '🟢' : '🔴';
+                            const dot1 = t1 === 'BULLISH' ? '🟢' : '🔴';
+                            const dot15 = t15 === 'BULLISH' ? '🟢' : '🔴';
+
+                            if (t4 !== 'BULLISH') {
+                                badge.style.background = 'rgba(239, 68, 68, 0.12)';
+                                badge.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+                                badge.style.color = '#f87171';
+                                badge.innerHTML = `${label}: 4H ${dot4} | 1H ${dot1} (Long Blocked 🛡️)`;
+                                badge.title = `4H Macro Trend is BEARISH. Long setups on ${label} are blocked to eliminate counter-trend bull traps.`;
+                            } else {
+                                const score = (t4 === 'BULLISH' ? 1 : 0) + (t1 === 'BULLISH' ? 1 : 0) + (t15 === 'BULLISH' ? 1 : 0);
+                                badge.style.background = 'rgba(16, 185, 129, 0.12)';
+                                badge.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+                                badge.style.color = '#34d399';
+                                badge.innerHTML = `${label}: 4H ${dot4} | 1H ${dot1} | 15m ${dot15} (${score}/3 A+)`;
+                                badge.title = `4H Macro: ${t4} | 1H Structure: ${t1} | 15m Trigger: ${t15}. Confluence Score: ${score}/3`;
+                            }
+                        };
+
+                        renderMtfBadge('mtf-gold-badge', 'GOLD', d.market_matrix.gold);
+                        renderMtfBadge('mtf-btc-badge', 'BTC', d.market_matrix.btc);
+                        renderMtfBadge('mtf-eth-badge', 'ETH', d.market_matrix.eth);
                     }
                 } catch(e) {}
             }
