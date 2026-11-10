@@ -33,6 +33,9 @@ class ExnessBridge:
         self.open_positions = []
         self.last_remote_sync_ts = 0.0
         self.cloud_gateway = CloudMT5Gateway()
+        self.algo_trading_enabled = False
+        self.trade_allowed = False
+        self.tradeapi_disabled = True
         
         # Auto-initialize with detected Exness account
         self.try_initialize_mt5()
@@ -48,6 +51,8 @@ class ExnessBridge:
         self.leverage = data.get("leverage", self.leverage)
         if "open_positions" in data:
             self.open_positions = data["open_positions"]
+        if "algo_trading_enabled" in data:
+            self.algo_trading_enabled = bool(data["algo_trading_enabled"])
         self.connected = True
         self.live_terminal = True
         self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -137,6 +142,15 @@ class ExnessBridge:
                     self.live_terminal = True
                     self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
                     self.status_message = f"LIVE MT5 CONNECTED (Account #{self.account_id} on {self.server})"
+
+                    # Check terminal algorithmic trading permissions
+                    term_info = mt5.terminal_info()
+                    if term_info:
+                        self.trade_allowed = bool(term_info.trade_allowed)
+                        self.tradeapi_disabled = bool(term_info.tradeapi_disabled)
+                        self.algo_trading_enabled = bool(term_info.trade_allowed and not term_info.tradeapi_disabled)
+                    else:
+                        self.algo_trading_enabled = False
 
                     # Get all open MT5 positions
                     positions = mt5.positions_get()
@@ -451,7 +465,10 @@ class ExnessBridge:
             "last_sync": self.last_sync,
             "status_message": self.status_message,
             "floating_pnl": getattr(self, "floating_pnl", 0.0),
-            "open_positions": getattr(self, "open_positions", [])
+            "open_positions": getattr(self, "open_positions", []),
+            "algo_trading_enabled": getattr(self, "algo_trading_enabled", False),
+            "trade_allowed": getattr(self, "trade_allowed", False),
+            "tradeapi_disabled": getattr(self, "tradeapi_disabled", True)
         }
 
     def sync_trade_execution(self, trade: Dict[str, Any]) -> Dict[str, Any]:
@@ -513,7 +530,8 @@ def start_cloud_tunnel_daemon(bridge: ExnessBridge, cloud_url: str = "https://ai
                             "floating_pnl": bridge.floating_pnl,
                             "currency": bridge.currency,
                             "leverage": bridge.leverage,
-                            "open_positions": bridge.open_positions
+                            "open_positions": bridge.open_positions,
+                            "algo_trading_enabled": bridge.algo_trading_enabled
                         }
                     }
                     res = requests.post(f"{cloud_url}/api/bridge/sync", json=payload, timeout=4.0)

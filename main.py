@@ -269,6 +269,35 @@ def index():
             .dot-flow { width: 9px; height: 9px; border-radius: 50%; background: #ef4444; animation: pulseRed 1.5s infinite; }
             @keyframes pulseRed { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
 
+            /* Live MT5 Algo Status Badge */
+            .algo-status-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.3px;
+                transition: all 0.3s ease;
+                white-space: nowrap;
+                user-select: none;
+            }
+            .algo-status-badge.algo-active {
+                background: rgba(16, 185, 129, 0.15);
+                border: 1px solid rgba(16, 185, 129, 0.5);
+                color: #34d399;
+                box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
+            }
+            .algo-status-badge.algo-paused {
+                background: rgba(239, 68, 68, 0.15);
+                border: 1px solid rgba(239, 68, 68, 0.5);
+                color: #f87171;
+                box-shadow: 0 0 14px rgba(239, 68, 68, 0.25);
+                animation: pulseRed 2s infinite ease-in-out;
+            }
+
             .tab-switch { display: flex; gap: 8px; }
             .tab-btn {
                 background: #131a29; border: 1px solid #1e293b; color: #94a3b8;
@@ -781,7 +810,7 @@ def index():
     <body class="theme-light">
         <!-- TOP APP BAR -->
         <header class="top-nav-bar">
-            <!-- Brand & Live Market Session with Real-Time Clock -->
+            <!-- Brand & Live Market Session with Real-Time Clock & MT5 Algo Status -->
             <div class="brand-flow">
                 <span class="dot-flow" style="background: #10b981; box-shadow: 0 0 10px #10b981;"></span>
                 <span style="font-weight: 900; font-size: 14px; letter-spacing: 0.5px; color: #f8fafc;">ALGO<span style="color: #38bdf8;">CORE</span></span>
@@ -790,6 +819,11 @@ def index():
                     <span id="nav-market-session" style="font-weight: 800; color: #38bdf8;">● MARKET ACTIVE</span>
                     <span style="color: #334155;">|</span>
                     <span id="nav-utc-clock" style="color: #94a3b8; font-weight: 700;">00:00:00 UTC</span>
+                </div>
+
+                <!-- Live MT5 Algo Status Badge -->
+                <div id="algo-status-badge" class="algo-status-badge algo-paused" title="MetaTrader 5 Algorithmic Trading Permission">
+                    <span id="algo-status-text">🔴 Algo Trading: Paused (Press Ctrl+E in MT5)</span>
                 </div>
             </div>
 
@@ -1714,6 +1748,22 @@ def index():
                         const navCount = document.getElementById('nav-open-count');
                         if (navCount) {
                             navCount.innerText = `${openCount} Live Order${openCount === 1 ? '' : 's'}`;
+                        }
+
+                        // Top Nav MT5 Algo Trading Status Badge
+                        const algoBadge = document.getElementById('algo-status-badge');
+                        const algoText = document.getElementById('algo-status-text');
+                        if (algoBadge && algoText) {
+                            const isAlgoActive = Boolean(d.exness.algo_trading_enabled);
+                            if (isAlgoActive) {
+                                algoBadge.className = 'algo-status-badge algo-active';
+                                algoText.innerHTML = '🟢 Algo Trading: Active';
+                                algoBadge.title = 'MT5 is fully enabled to auto-execute orders and trail Stop Loss!';
+                            } else {
+                                algoBadge.className = 'algo-status-badge algo-paused';
+                                algoText.innerHTML = '🔴 Algo Trading: Paused (Press Ctrl+E in MT5)';
+                                algoBadge.title = 'MT5 is currently blocking automated orders. Click "Algo Trading" button or press Ctrl+E in MT5 to enable.';
+                            }
                         }
 
                         // Window Subheader

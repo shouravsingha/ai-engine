@@ -148,6 +148,16 @@ class MasterOrchestrator:
                             # 1. AUDIT BY AI CENTRAL NEURAL BRAIN
                             audit = self.brain.audit_trade_proposal("Alex & Marcus", symbol_exec, "BUY", trade_plan["risk_reward_ratio"], 1.0)
                             
+                            # Check if MT5 Algo Trading is active before sending order
+                            if not self.exness.algo_trading_enabled and self.exness.live_terminal:
+                                if not getattr(self, f"_algo_warned_{symbol_exec}", False):
+                                    self.log(f"⏸️ MT5 Algo Trading is paused. Press Ctrl+E in MT5 to allow automated execution for {symbol_exec}.")
+                                    self.send_agent_message("Marcus", "Risk Officer (PA_02)", f"⏸️ {symbol_exec} setup ready, but MT5 Algo Trading is paused. Press Ctrl+E in MT5.")
+                                    setattr(self, f"_algo_warned_{symbol_exec}", True)
+                                continue
+                            else:
+                                setattr(self, f"_algo_warned_{symbol_exec}", False)
+
                             # 2. REAL EXECUTION ON EXNESS MT5
                             mt5_res = self.exness.execute_live_order(symbol_exec, "BUY", volume=vol, sl=sl, tp=tp)
                             
