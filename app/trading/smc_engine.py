@@ -169,27 +169,27 @@ class SMCEngine:
         # 5. Fair Value Gap (FVG) with Consequent Encroachment (50% CE)
         fvg = None
         if n >= 3:
-            c1_high = highs[-3]
-            c3_low = lows[-1]
+            c1_high = float(highs[-3])
+            c3_low = float(lows[-1])
             if c3_low > c1_high:
-                ce = (c1_high + c3_low) / 2.0
+                ce = float((c1_high + c3_low) / 2.0)
                 fvg = {
                     "type": "BULLISH_FVG",
-                    "bottom": round(c1_high, 2),
-                    "top": round(c3_low, 2),
-                    "ce_50": round(ce, 2), # Consequent Encroachment sweet spot
-                    "tested": current_price <= ce
+                    "bottom": round(float(c1_high), 2),
+                    "top": round(float(c3_low), 2),
+                    "ce_50": round(float(ce), 2), # Consequent Encroachment sweet spot
+                    "tested": bool(current_price <= ce)
                 }
             elif lows[-3] > highs[-1]:
-                c1_low = lows[-3]
-                c3_high = highs[-1]
-                ce = (c1_low + c3_high) / 2.0
+                c1_low = float(lows[-3])
+                c3_high = float(highs[-1])
+                ce = float((c1_low + c3_high) / 2.0)
                 fvg = {
                     "type": "BEARISH_FVG",
-                    "top": round(c1_low, 2),
-                    "bottom": round(c3_high, 2),
-                    "ce_50": round(ce, 2),
-                    "tested": current_price >= ce
+                    "top": round(float(c1_low), 2),
+                    "bottom": round(float(c3_high), 2),
+                    "ce_50": round(float(ce), 2),
+                    "tested": bool(current_price >= ce)
                 }
 
         # 6. Current ICT Killzone
@@ -199,38 +199,38 @@ class SMCEngine:
         if self.trend == "BULLISH":
             # SL strictly below Order Block or swept liquidity low + tiny buffer
             anchor_low = sweep_level if ssl_swept and sweep_level else (ob_zone["low"] if ob_zone else recent_low)
-            recommended_sl = round(anchor_low - (atr * 0.35), 2)
+            recommended_sl = round(float(anchor_low - (atr * 0.35)), 2)
             # Ensure SL is not ridiculously far; max distance capped by 1.5x ATR
             if (current_price - recommended_sl) > (atr * 2.2):
-                recommended_sl = round(current_price - (atr * 1.8), 2)
+                recommended_sl = round(float(current_price - (atr * 1.8)), 2)
             
             # TP placed at BSL (previous high) or 2.5x risk
             risk_dist = max(0.1, current_price - recommended_sl)
-            recommended_tp = round(max(recent_high + (atr * 0.5), current_price + (risk_dist * 2.6)), 2)
+            recommended_tp = round(float(max(recent_high + (atr * 0.5), current_price + (risk_dist * 2.6))), 2)
         else:
             anchor_high = sweep_level if bsl_swept and sweep_level else (ob_zone["high"] if ob_zone else recent_high)
-            recommended_sl = round(anchor_high + (atr * 0.35), 2)
+            recommended_sl = round(float(anchor_high + (atr * 0.35)), 2)
             if (recommended_sl - current_price) > (atr * 2.2):
-                recommended_sl = round(current_price + (atr * 1.8), 2)
+                recommended_sl = round(float(current_price + (atr * 1.8)), 2)
             risk_dist = max(0.1, recommended_sl - current_price)
-            recommended_tp = round(min(recent_low - (atr * 0.5), current_price - (risk_dist * 2.6)), 2)
+            recommended_tp = round(float(min(recent_low - (atr * 0.5), current_price - (risk_dist * 2.6))), 2)
 
         return {
             "trend": self.trend,
             "structure_event": structure_event,
-            "swing_high": round(recent_high, 2),
-            "swing_low": round(recent_low, 2),
-            "atr": round(atr, 2),
+            "swing_high": round(float(recent_high), 2),
+            "swing_low": round(float(recent_low), 2),
+            "atr": round(float(atr), 2),
             "order_block": ob_zone,
             "fvg": fvg,
             "liquidity_sweep": {
-                "ssl_swept": ssl_swept,
-                "bsl_swept": bsl_swept,
-                "level": sweep_level
+                "ssl_swept": bool(ssl_swept),
+                "bsl_swept": bool(bsl_swept),
+                "level": round(float(sweep_level), 2) if sweep_level else None
             },
-            "displacement": has_displacement,
+            "displacement": bool(has_displacement),
             "killzone": killzone,
             "recommended_sl": recommended_sl,
             "recommended_tp": recommended_tp,
-            "current_price": round(current_price, 2)
+            "current_price": round(float(current_price), 2)
         }
