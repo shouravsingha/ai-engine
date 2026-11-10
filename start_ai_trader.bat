@@ -17,5 +17,13 @@ ping 127.0.0.1 -n 6 >nul
 
 echo [2/2] Launching AI Engine, OrderFlow Matrix ^& Cloud Tunnel...
 cd /d "C:\Users\HP\ai-engine"
+
+:run_engine
 python -m uvicorn main:app --host 0.0.0.0 --port 8000
-pause
+echo.
+echo ============================================================
+echo [AI SENTINEL RECOVERY] Engine process exited.
+echo Auto-recovering and restarting in 4 seconds...
+echo ============================================================
+ping 127.0.0.1 -n 5 >nul
+goto run_engine
