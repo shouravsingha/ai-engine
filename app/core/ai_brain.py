@@ -193,6 +193,21 @@ class AIBrainOverseer:
                         "status": "HARVESTED"
                     })
                     continue
+                elif side == "SELL" and trend_15m == "BULLISH" and profit > 0.25:
+                    actions.append({
+                        "action": "close_position",
+                        "ticket": ticket,
+                        "symbol": symbol,
+                        "reason": f"⚡ ICT MSS REVERSAL EXIT: 15m market structure shifted to BULLISH. Banking +${profit:.2f} early."
+                    })
+                    self.brain_audits.insert(0, {
+                        "time": now_str,
+                        "type": "MSS_REVERSAL_EXIT",
+                        "agent": "Marcus & David",
+                        "message": f"15m MSS Bullish detected on {symbol}. Harvested +${profit:.2f} on short position.",
+                        "status": "HARVESTED"
+                    })
+                    continue
 
             # -------------------------------------------------------------
             # RULE 4: FAST BREAK-EVEN SHIELD (Profit >= +$0.45)

@@ -125,21 +125,25 @@ class MasterOrchestrator:
                 fib_res = self.fib.calculate_levels(swing_high, swing_low, trend_1h)
                 zone_status = self.fib.check_zone(current_price, fib_res.get("equilibrium_50", current_price), trend_1h)
 
-                # 3. Calculate MTF Confluence Score & Alignment
+                # 3. Calculate MTF Confluence Score & Institutional Bias (BUY & SELL)
                 bull_count = (1 if trend_4h == "BULLISH" else 0) + (1 if trend_1h == "BULLISH" else 0) + (1 if trend_15m == "BULLISH" else 0)
-                
-                if trend_4h == "BULLISH" and trend_1h == "BULLISH" and trend_15m == "BULLISH":
-                    mtf_status = "TRIPLE_A_PLUS (3/3 BULLISH)"
+                bear_count = (1 if trend_4h == "BEARISH" else 0) + (1 if trend_1h == "BEARISH" else 0) + (1 if trend_15m == "BEARISH" else 0)
+
+                if trend_4h == "BULLISH" and trend_1h == "BULLISH":
+                    mtf_bias = "BULLISH"
                     mtf_aligned = True
-                elif trend_4h == "BULLISH" and trend_1h == "BULLISH":
-                    mtf_status = "HTF_ALIGNED (2/3 BULLISH)"
+                    mtf_status = "TRIPLE_A_PLUS (3/3 BULLISH)" if bull_count == 3 else "HTF_ALIGNED (2/3 BULLISH)"
+                    mtf_score = f"{bull_count}/3"
+                elif trend_4h == "BEARISH" and trend_1h == "BEARISH":
+                    mtf_bias = "BEARISH"
                     mtf_aligned = True
-                elif trend_4h == "BEARISH":
-                    mtf_status = "4H_MACRO_BEARISH (LONG BLOCKED)"
-                    mtf_aligned = False
+                    mtf_status = "TRIPLE_A_PLUS (3/3 BEARISH)" if bear_count == 3 else "HTF_ALIGNED (2/3 BEARISH)"
+                    mtf_score = f"{bear_count}/3"
                 else:
-                    mtf_status = "MIXED_CONFLICT"
+                    mtf_bias = "NEUTRAL"
                     mtf_aligned = False
+                    mtf_status = "MIXED_CONFLICT (WAITING SETUP)"
+                    mtf_score = f"{max(bull_count, bear_count)}/3"
 
                 matrix[asset_key] = {
                     "symbol": ticker["symbol"],
@@ -149,8 +153,9 @@ class MasterOrchestrator:
                     "trend_4h": trend_4h,
                     "trend_1h": trend_1h,
                     "trend_15m": trend_15m,
+                    "mtf_bias": mtf_bias,
                     "mtf_status": mtf_status,
-                    "mtf_score": f"{bull_count}/3",
+                    "mtf_score": mtf_score,
                     "mtf_aligned": mtf_aligned,
                     "killzone": smc_1h.get("killzone", {}),
                     "fvg": smc_1h.get("fvg"),
@@ -168,56 +173,70 @@ class MasterOrchestrator:
 
             # Check for High-Probability Setup with ICT + Multi-Timeframe Confluence (15m + 1h + 4h)
             if len(self.exness.open_positions) < 3 and "golden_pocket_ote" in fib_res:
-                # MTF Filter: 4H Macro Trend MUST be BULLISH (eliminates counter-trend fakeouts)
-                if trend_4h != "BULLISH":
-                    if "DISCOUNT" in zone_status and not getattr(self, f"_htf_blocked_{asset_key}", False):
-                        block_msg = f"🛡️ MTF FILTER: 4H Macro Trend on {ticker['symbol']} is BEARISH. Long setup blocked to prevent fakeout / bull trap drawdown."
-                        self.log(block_msg)
-                        self.send_agent_message("Alex", "Chief Quant (PA_01)", block_msg)
-                        setattr(self, f"_htf_blocked_{asset_key}", True)
-                elif trend_1h == "BULLISH" and "DISCOUNT" in zone_status and mtf_aligned:
-                    setattr(self, f"_htf_blocked_{asset_key}", False)
-                    entry = current_price
-                    
-                    # -------------------------------------------------------------
-                    # PERFECT ICT SL & TP PLACEMENT:
-                    # - SL placed at precise Order Block / Sweep Low invalidation
-                    # - Hard dollar-risk ceiling: maximum $0.80 - $1.20 risk on small accounts
-                    # - TP placed at Buy-Side Liquidity (BSL) or 1.618 extension (RRR >= 2.5)
-                    # -------------------------------------------------------------
+                symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDm" if asset_key == "btc" else "ETHUSDm")
+                vol = 0.1 if asset_key == "eth" else 0.01
+                entry = current_price
+                trade_side = None
+
+                # -------------------------------------------------------------
+                # 1. BULLISH SETUP (BUY / LONG):
+                # - 4H Macro Trend: BULLISH
+                # - 1H Structure Trend: BULLISH
+                # - Zone: DISCOUNT (Equilibrium < 50%)
+                # -------------------------------------------------------------
+                if trend_4h == "BULLISH" and trend_1h == "BULLISH" and "DISCOUNT" in zone_status and mtf_aligned:
+                    trade_side = "BUY"
                     raw_sl = float(smc_1h.get("recommended_sl", smc_1h["swing_low"]))
                     # Enforce that SL is below entry for BUY
                     if raw_sl >= entry or (entry - raw_sl) < (current_price * 0.001):
                         raw_sl = entry - (current_price * 0.004)
-                    
-                    # Maximum allowable SL distance to prevent big dollar drawdowns on 0.01 lot
-                    vol = 0.1 if asset_key == "eth" else 0.01
-                    symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDm" if asset_key == "btc" else "ETHUSDm")
-                    
-                    # Cap risk: for BTC max $100 price distance ($1.00 loss on 0.01 lot)
-                    # for Gold max $10 price distance ($1.00 loss on 0.01 lot)
-                    # for ETH max $10 price distance ($1.00 loss on 0.1 lot)
+
                     max_sl_dist = 110.0 if "BTC" in symbol_exec else (12.0 if "XAU" in symbol_exec else 10.0)
                     if (entry - raw_sl) > max_sl_dist:
                         sl = round(entry - max_sl_dist, 2)
                     else:
                         sl = round(raw_sl, 2)
-                    
-                    # Perfect Take Profit: minimum 2.6x the SL distance (Institutional 1:2.6 RRR)
+
                     min_tp_dist = (entry - sl) * 2.6
                     raw_tp = float(smc_1h.get("recommended_tp", fib_res.get("target_ext_1", entry + min_tp_dist)))
                     tp = round(max(raw_tp, entry + min_tp_dist), 2)
 
+                # -------------------------------------------------------------
+                # 2. BEARISH SETUP (SELL / SHORT):
+                # - 4H Macro Trend: BEARISH
+                # - 1H Structure Trend: BEARISH
+                # - Zone: PREMIUM (Equilibrium > 50%)
+                # -------------------------------------------------------------
+                elif trend_4h == "BEARISH" and trend_1h == "BEARISH" and "PREMIUM" in zone_status and mtf_aligned:
+                    trade_side = "SELL"
+                    raw_sl = float(smc_1h.get("recommended_sl", smc_1h["swing_high"]))
+                    # Enforce that SL is ABOVE entry for SELL
+                    if raw_sl <= entry or (raw_sl - entry) < (current_price * 0.001):
+                        raw_sl = entry + (current_price * 0.004)
+
+                    max_sl_dist = 110.0 if "BTC" in symbol_exec else (12.0 if "XAU" in symbol_exec else 10.0)
+                    if (raw_sl - entry) > max_sl_dist:
+                        sl = round(entry + max_sl_dist, 2)
+                    else:
+                        sl = round(raw_sl, 2)
+
+                    # Perfect Take Profit for SELL: minimum 2.6x the SL distance below entry
+                    min_tp_dist = (sl - entry) * 2.6
+                    raw_tp = float(smc_1h.get("recommended_tp", fib_res.get("target_ext_1", entry - min_tp_dist)))
+                    tp = round(min(raw_tp, entry - min_tp_dist), 2)
+
+                # Execute if either BUY or SELL setup triggered
+                if trade_side:
                     # Check if already open on this symbol to prevent duplicate spam
                     already_open = any(p.get("symbol") == symbol_exec for p in self.exness.open_positions)
                     if not already_open:
-                        trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, "BUY", entry, sl, tp)
+                        trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, trade_side, entry, sl, tp)
                         if trade_plan:
                             # 1. AUDIT BY AI CENTRAL NEURAL BRAIN
-                            audit = self.brain.audit_trade_proposal("Alex & Marcus", symbol_exec, "BUY", trade_plan["risk_reward_ratio"], 1.0)
+                            audit = self.brain.audit_trade_proposal("Alex & Marcus", symbol_exec, trade_side, trade_plan["risk_reward_ratio"], 1.0)
                             if not audit.get("approved", True):
                                 continue
-                            
+
                             # Check if MT5 Algo Trading is active before sending order
                             if not self.exness.algo_trading_enabled and self.exness.live_terminal:
                                 if not getattr(self, f"_algo_warned_{symbol_exec}", False):
@@ -229,8 +248,8 @@ class MasterOrchestrator:
                                 setattr(self, f"_algo_warned_{symbol_exec}", False)
 
                             # 2. REAL EXECUTION ON EXNESS MT5
-                            mt5_res = self.exness.execute_live_order(symbol_exec, "BUY", volume=vol, sl=sl, tp=tp)
-                            
+                            mt5_res = self.exness.execute_live_order(symbol_exec, trade_side, volume=vol, sl=sl, tp=tp)
+
                             if mt5_res.get("status") in ("success", "queued"):
                                 # 3. Log internal order
                                 order = self.account.open_trade(trade_plan, symbol=symbol_exec)
@@ -239,10 +258,12 @@ class MasterOrchestrator:
 
                                 asset_title = ticker["symbol"]
                                 kz_info = smc_1h.get("killzone", {}).get("name", "Active Session")
-                                self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} ICT OTE & MTF Confluence Verified ({mtf_status} | {kz_info}). SL: ${sl:,.2f} | TP: ${tp:,.2f}.")
-                                self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ICT DISPLACEMENT: Fair Value Gap CE filled on {asset_title}!")
-                                self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} tagged ICT 0.705 sweet spot at ${entry:,.2f} in Discount Zone.")
-                                self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED on Exness MT5! Ticket #{ticket_no} active with strict ${entry-sl:.2f} risk cap.")
+                                action_name = "LONG (BUY)" if trade_side == "BUY" else "SHORT (SELL)"
+                                zone_name = "Discount" if trade_side == "BUY" else "Premium"
+                                self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} {action_name} ICT OTE & MTF Confluence Verified ({mtf_status} | {kz_info}). SL: ${sl:,.2f} | TP: ${tp:,.2f}.")
+                                self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ICT DISPLACEMENT: Fair Value Gap CE filled on {asset_title} for {action_name}!")
+                                self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} tagged ICT 0.705 sweet spot at ${entry:,.2f} in {zone_name} Zone.")
+                                self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED ({trade_side}) on Exness MT5! Ticket #{ticket_no} active with strict ${abs(entry-sl):.2f} risk cap.")
 
                                 self.telegram.send_trade_signal(order, asset=f"{asset_title} [{mtf_status} · {kz_info}]")
                                 self.webhooks.broadcast_trade(order, asset=asset_title)

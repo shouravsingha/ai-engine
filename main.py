@@ -1892,19 +1892,27 @@ def index():
                             const dot1 = t1 === 'BULLISH' ? '🟢' : '🔴';
                             const dot15 = t15 === 'BULLISH' ? '🟢' : '🔴';
 
-                            if (t4 !== 'BULLISH') {
-                                badge.style.background = 'rgba(239, 68, 68, 0.12)';
-                                badge.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+                            const bullScore = (t4 === 'BULLISH' ? 1 : 0) + (t1 === 'BULLISH' ? 1 : 0) + (t15 === 'BULLISH' ? 1 : 0);
+                            const bearScore = (t4 === 'BEARISH' ? 1 : 0) + (t1 === 'BEARISH' ? 1 : 0) + (t15 === 'BEARISH' ? 1 : 0);
+
+                            if (t4 === 'BEARISH' && t1 === 'BEARISH') {
+                                badge.style.background = 'rgba(239, 68, 68, 0.14)';
+                                badge.style.borderColor = 'rgba(239, 68, 68, 0.45)';
                                 badge.style.color = '#f87171';
-                                badge.innerHTML = `${label}: 4H ${dot4} | 1H ${dot1} (Long Blocked 🛡️)`;
-                                badge.title = `4H Macro Trend is BEARISH. Long setups on ${label} are blocked to eliminate counter-trend bull traps.`;
-                            } else {
-                                const score = (t4 === 'BULLISH' ? 1 : 0) + (t1 === 'BULLISH' ? 1 : 0) + (t15 === 'BULLISH' ? 1 : 0);
+                                badge.innerHTML = `${label}: 4H ${dot4} | 1H ${dot1} | 15m ${dot15} (${bearScore}/3 Short A+)`;
+                                badge.title = `4H Macro: ${t4} | 1H Structure: ${t1} | 15m Trigger: ${t15}. Institutional Bearish Bias (Hunting Sell in Premium).`;
+                            } else if (t4 === 'BULLISH' && t1 === 'BULLISH') {
                                 badge.style.background = 'rgba(16, 185, 129, 0.12)';
                                 badge.style.borderColor = 'rgba(16, 185, 129, 0.35)';
                                 badge.style.color = '#34d399';
-                                badge.innerHTML = `${label}: 4H ${dot4} | 1H ${dot1} | 15m ${dot15} (${score}/3 A+)`;
-                                badge.title = `4H Macro: ${t4} | 1H Structure: ${t1} | 15m Trigger: ${t15}. Confluence Score: ${score}/3`;
+                                badge.innerHTML = `${label}: 4H ${dot4} | 1H ${dot1} | 15m ${dot15} (${bullScore}/3 Long A+)`;
+                                badge.title = `4H Macro: ${t4} | 1H Structure: ${t1} | 15m Trigger: ${t15}. Institutional Bullish Bias (Hunting Buy in Discount).`;
+                            } else {
+                                badge.style.background = 'rgba(148, 163, 184, 0.1)';
+                                badge.style.borderColor = 'rgba(148, 163, 184, 0.25)';
+                                badge.style.color = '#94a3b8';
+                                badge.innerHTML = `${label}: 4H ${dot4} | 1H ${dot1} (Mixed Bias)`;
+                                badge.title = `4H Macro: ${t4} vs 1H Structure: ${t1}. Waiting for timeframe alignment before executing.`;
                             }
                         };
 
