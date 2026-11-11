@@ -63,14 +63,28 @@ class ExnessBridge:
         """Attempts real connection to local MetaTrader 5 Exness terminal."""
         if MT5_AVAILABLE:
             try:
-                # 1. First try attaching to currently running MT5 instance with short timeout
+                # Fast check: ensure MetaTrader 5 terminal process is running before IPC call
+                try:
+                    import psutil
+                    terminal_running = any("terminal" in p.name().lower() for p in psutil.process_iter(['name']))
+                except Exception:
+                    terminal_running = True
+
+                if not terminal_running:
+                    self.connected = False
+                    self.live_terminal = False
+                    self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+                    self.status_message = f"Waiting for MT5 Terminal (Start start_ai_trader.bat or MT5)"
+                    return False
+
+                # 1. Try attaching to running MT5 instance
                 initialized = False
                 try:
                     initialized = mt5.initialize(timeout=2500)
                 except Exception:
                     pass
                 
-                # 2. If not initialized, try explicitly with path and login credentials
+                # 2. If not initialized, try explicitly with login credentials
                 if not initialized and hasattr(self, 'path') and self.path:
                     try:
                         acc_id_int = int(self.account_id)
@@ -128,8 +142,13 @@ class ExnessBridge:
             try:
                 acc_info = mt5.account_info()
                 if not acc_info:
-                    mt5.initialize()
-                    acc_info = mt5.account_info()
+                    try:
+                        import psutil
+                        if any("terminal" in p.name().lower() for p in psutil.process_iter(['name'])):
+                            mt5.initialize(timeout=1500)
+                            acc_info = mt5.account_info()
+                    except Exception:
+                        pass
 
                 if acc_info:
                     self.account_id = str(acc_info.login)
@@ -200,6 +219,9 @@ class ExnessBridge:
 
     def execute_live_order(self, symbol: str, side: str, volume: float = 0.01, sl: float = 0.0, tp: float = 0.0) -> Dict[str, Any]:
         """Executes a real order directly on the Exness MT5 terminal or 24/7 Cloud Gateway."""
+        if self.balance < 5.0:
+            return {"status": "rejected", "message": f"Execution halted: Balance (${self.balance:.2f}) below minimum $5.00 threshold."}
+
         if self.cloud_gateway.is_configured():
             c_res = self.cloud_gateway.execute_live_order(symbol, side, volume, sl, tp)
             if c_res.get("status") == "success":
@@ -227,6 +249,16 @@ class ExnessBridge:
             return {"status": "queued", "ticket": f"TUNNEL-{int(datetime.now().timestamp())}", "message": f"Queued for Windows MT5 terminal"}
 
         try:
+            # Pre-flight account & margin safety check
+            acc_chk = mt5.account_info()
+            if acc_chk:
+                if acc_chk.balance < 5.0:
+                    return {"status": "rejected", "message": f"MT5 balance (${acc_chk.balance:.2f}) below safe $5.00 limit."}
+                if acc_chk.margin_free < 1.0:
+                    return {"status": "rejected", "message": f"MT5 free margin (${acc_chk.margin_free:.2f}) is exhausted."}
+                if acc_chk.margin > 0 and (acc_chk.equity / acc_chk.margin * 100.0) < 200.0:
+                    return {"status": "rejected", "message": f"MT5 margin level is dangerously low (<200%)."}
+
             # Map symbol for Exness trial account
             sym = symbol
             if not mt5.symbol_info(sym):

@@ -24,22 +24,25 @@ class TelegramSentinelBot:
         self.is_running = False
 
     def send_message(self, message: str) -> bool:
-        """Sends an HTML formatted alert to Telegram."""
+        """Sends an HTML formatted alert to Telegram asynchronously in background."""
         if not self.token or not self.chat_id:
             return False
 
-        url = f"{self.base_url}/sendMessage"
-        payload = {
-            "chat_id": self.chat_id,
-            "text": message,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True
-        }
-        try:
-            res = requests.post(url, json=payload, timeout=8)
-            return res.status_code == 200
-        except Exception:
-            return False
+        def _post():
+            url = f"{self.base_url}/sendMessage"
+            payload = {
+                "chat_id": self.chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True
+            }
+            try:
+                requests.post(url, json=payload, timeout=4)
+            except Exception:
+                pass
+
+        threading.Thread(target=_post, daemon=True).start()
+        return True
 
     def send_trade_signal(self, trade: Dict[str, Any], asset: str = "GOLD (XAUUSD)") -> bool:
         """Dispatches an institutional trade alert to Telegram."""

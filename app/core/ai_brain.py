@@ -35,10 +35,22 @@ class AIBrainOverseer:
         }
         self.managed_positions_state: Dict[int, Dict[str, Any]] = {}
 
-    def audit_trade_proposal(self, agent_name: str, symbol: str, side: str, rrr: float, risk_pct: float) -> Dict[str, Any]:
+    def audit_trade_proposal(self, agent_name: str, symbol: str, side: str, rrr: float, risk_pct: float, dollar_risk: float = 0.0, balance: float = 50000.0) -> Dict[str, Any]:
         """Audits agent trade setups. Enforces strict ICT/SMC risk rules & psychology circuit breakers."""
         now_ts = datetime.now().timestamp()
         now_str = datetime.now().strftime("%H:%M:%S")
+
+        # Guard against depleted account balance (< $5.00)
+        if balance < 5.0:
+            correction = f"DEPLETED CAPITAL LOCK: Balance (${balance:.2f}) is below safe operating threshold ($5.00). Trades blocked."
+            self.brain_audits.insert(0, {"time": now_str, "type": "CAPITAL_LOCK", "agent": agent_name, "message": correction, "status": "BLOCKED"})
+            return {"approved": False, "corrected": True, "correction_text": correction}
+
+        # Guard against excessive dollar risk on micro accounts (< $50)
+        if balance < 50.0 and dollar_risk > 1.25:
+            correction = f"DOLLAR CEILING VIOLATION: Risk of ${dollar_risk:.2f} exceeds micro account maximum ($1.25). Rejected."
+            self.brain_audits.insert(0, {"time": now_str, "type": "RISK_CEILING_REJECT", "agent": agent_name, "message": correction, "status": "BLOCKED"})
+            return {"approved": False, "corrected": True, "correction_text": correction}
 
         # Psychology Rule: Circuit Breaker on tilt / consecutive losses
         if now_ts < self.psychology["cooldown_until"]:
@@ -48,8 +60,8 @@ class AIBrainOverseer:
             return {"approved": False, "corrected": True, "correction_text": correction}
 
         # Rule 1: Risk cannot exceed 1.0%
-        if risk_pct > 1.0:
-            correction = f"CORRECTION for {agent_name}: Proposed risk {risk_pct}% exceeds institutional 1.0% ceiling. Sized down to strict 1.0% ($0.20-$0.50 max)."
+        if risk_pct > 1.0 and balance >= 200.0:
+            correction = f"CORRECTION for {agent_name}: Proposed risk {risk_pct}% exceeds institutional 1.0% ceiling. Sized down to strict 1.0%."
             entry = {"time": now_str, "type": "RISK_CORRECTION", "agent": agent_name, "message": correction, "status": "OVERRULED_AND_CORRECTED"}
             self.brain_audits.insert(0, entry)
             self.learning_metrics["mistakes_prevented"] += 1
@@ -127,6 +139,27 @@ class AIBrainOverseer:
 
             highest_profit = state.get("highest_profit", profit)
             trade_duration_mins = (now - state["open_time"]).total_seconds() / 60.0
+
+            # -------------------------------------------------------------
+            # RULE 0: EMERGENCY HARD LOSS CIRCUIT BREAKER (MAX DOLLAR DRAWDOWN DEFENSE)
+            # If a single trade's floating loss reaches -$1.25 (or broker stop level),
+            # FORCE CLOSE IMMEDIATELY! Never allow a trade to reach broker margin call.
+            # -------------------------------------------------------------
+            if profit <= -1.25:
+                actions.append({
+                    "action": "close_position",
+                    "ticket": ticket,
+                    "symbol": symbol,
+                    "reason": f"🚨 EMERGENCY CIRCUIT BREAKER: {symbol} loss reached -${abs(profit):.2f}. Auto-liquidating to prevent account stop-out."
+                })
+                self.brain_audits.insert(0, {
+                    "time": now_str,
+                    "type": "EMERGENCY_STOP",
+                    "agent": "Marcus (Risk Guardian)",
+                    "message": f"EMERGENCY CUT on {symbol} #{ticket}: loss was -${abs(profit):.2f}. Capital shielded.",
+                    "status": "EMERGENCY_CUT"
+                })
+                continue
 
             # -------------------------------------------------------------
             # RULE 1: CAPITAL PRESERVATION HARVEST (NEVER LET A WINNER TURN RED)

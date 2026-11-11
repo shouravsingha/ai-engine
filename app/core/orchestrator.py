@@ -97,6 +97,20 @@ class MasterOrchestrator:
     def run_simultaneous_scan(self):
         """Scans Gold, BTC, and ETH concurrently with Multi-Timeframe SMC (4H/1H/15m) and AI Brain validation."""
         self.exness.refresh_balance()
+        
+        # 0. Capital Preservation Lock: Halt all scanning & ordering if balance is below safe threshold ($5.00)
+        if self.exness.balance < self.risk.min_balance_threshold:
+            if not getattr(self, "_depleted_balance_warned", False):
+                warn_msg = f"⏸️ CAPITAL SHIELD ACTIVE: Exness balance (${self.exness.balance:,.2f}) is below minimum safe threshold ($5.00). New orders paused."
+                self.log(warn_msg)
+                self.send_agent_message("Marcus", "Risk Officer (PA_02)", warn_msg)
+                self.telegram.send_message(f"🚨 <b>CAPITAL SHIELD PAUSE:</b>\n{warn_msg}\nPlease top up funds to resume.")
+                self._depleted_balance_warned = True
+            self.evaluate_and_defend_positions()
+            return
+        else:
+            self._depleted_balance_warned = False
+
         tickers = self.market.get_all_live_tickers()
 
         matrix = {}
@@ -172,11 +186,22 @@ class MasterOrchestrator:
                 continue
 
             # Check for High-Probability Setup with ICT + Multi-Timeframe Confluence (15m + 1h + 4h)
-            if len(self.exness.open_positions) < 3 and "golden_pocket_ote" in fib_res:
+            max_allowed_pos = self.risk.get_max_allowed_positions(self.exness.balance)
+            if len(self.exness.open_positions) < max_allowed_pos and "golden_pocket_ote" in fib_res:
                 symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDm" if asset_key == "btc" else "ETHUSDm")
-                vol = 0.1 if asset_key == "eth" else 0.01
                 entry = current_price
                 trade_side = None
+
+                # Dynamic maximum allowable SL distance according to account equity
+                # Prevents 0.01 lot loss from ever exceeding the allowable dollar risk ceiling
+                bal = self.exness.balance
+                if bal < 50.0:
+                    # Micro tier: Gold max $1.00 distance ($1.00 risk), BTC max $80 ($0.80 risk), ETH max $25 ($0.25 risk)
+                    max_sl_dist = 80.0 if "BTC" in symbol_exec else (1.0 if "XAU" in symbol_exec else 25.0)
+                elif bal < 200.0:
+                    max_sl_dist = 160.0 if "BTC" in symbol_exec else (3.0 if "XAU" in symbol_exec else 45.0)
+                else:
+                    max_sl_dist = 350.0 if "BTC" in symbol_exec else (10.0 if "XAU" in symbol_exec else 60.0)
 
                 # -------------------------------------------------------------
                 # 1. BULLISH SETUP (BUY / LONG):
@@ -191,7 +216,6 @@ class MasterOrchestrator:
                     if raw_sl >= entry or (entry - raw_sl) < (current_price * 0.001):
                         raw_sl = entry - (current_price * 0.004)
 
-                    max_sl_dist = 110.0 if "BTC" in symbol_exec else (12.0 if "XAU" in symbol_exec else 10.0)
                     if (entry - raw_sl) > max_sl_dist:
                         sl = round(entry - max_sl_dist, 2)
                     else:
@@ -214,7 +238,6 @@ class MasterOrchestrator:
                     if raw_sl <= entry or (raw_sl - entry) < (current_price * 0.001):
                         raw_sl = entry + (current_price * 0.004)
 
-                    max_sl_dist = 110.0 if "BTC" in symbol_exec else (12.0 if "XAU" in symbol_exec else 10.0)
                     if (raw_sl - entry) > max_sl_dist:
                         sl = round(entry + max_sl_dist, 2)
                     else:
@@ -230,10 +253,19 @@ class MasterOrchestrator:
                     # Check if already open on this symbol to prevent duplicate spam
                     already_open = any(p.get("symbol") == symbol_exec for p in self.exness.open_positions)
                     if not already_open:
-                        trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, trade_side, entry, sl, tp)
+                        trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, trade_side, entry, sl, tp, symbol=symbol_exec)
                         if trade_plan:
+                            vol = trade_plan["volume"]
                             # 1. AUDIT BY AI CENTRAL NEURAL BRAIN
-                            audit = self.brain.audit_trade_proposal("Alex & Marcus", symbol_exec, trade_side, trade_plan["risk_reward_ratio"], 1.0)
+                            audit = self.brain.audit_trade_proposal(
+                                "Alex & Marcus",
+                                symbol_exec,
+                                trade_side,
+                                trade_plan["risk_reward_ratio"],
+                                1.0,
+                                dollar_risk=trade_plan["dollar_risk"],
+                                balance=self.exness.balance
+                            )
                             if not audit.get("approved", True):
                                 continue
 
