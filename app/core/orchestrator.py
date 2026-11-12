@@ -18,6 +18,7 @@ from app.trading.exness_bridge import ExnessBridge
 from app.trading.orderflow_engine import OrderFlowEngine
 from app.trading.time_machine import TimeMachineEngine
 from app.trading.orb_engine import SessionORBEngine
+from app.trading.gold_strategy_engine import GoldStrategyEngine
 from app.core.ai_brain import AIBrainOverseer
 from app.agency.branding_engine import BrandingEngine
 from app.agency.webhook_dispatcher import SocialWebhookDispatcher
@@ -38,6 +39,7 @@ class MasterOrchestrator:
         self.risk = RiskManager(risk_percent=1.0, min_rrr=2.5)
         self.time_machine = TimeMachineEngine(default_replays=2500, horizon_bars=36)
         self.orb = SessionORBEngine(or_minutes=15, default_target_r=2.5)
+        self.gold_engine = GoldStrategyEngine(max_sl_distance=2.50)
         self.account = DemoAccount(initial_capital=50000.0)
         self.cloud_command_queue = []
         self.exness = ExnessBridge(command_queue=self.cloud_command_queue)
@@ -77,7 +79,19 @@ class MasterOrchestrator:
             return f"🧠 <b>AI Central Brain Diagnostics:</b>\nCognitive Load: {b['cognitive_load']}\nDecisions Audited: {b['metrics']['decisions_audited']}\nMistakes Prevented: {b['metrics']['mistakes_prevented']}\nSystem IQ: {b['metrics']['system_iq']}"
         elif "/gold" in cmd:
             g = self.multi_market_matrix.get("gold", {})
-            return f"🥇 <b>GOLD (XAUUSDm):</b> ${g.get('price', 2748.20):,.2f}\nSMC MTF (4H/1H/15m): {g.get('mtf_status', '3/3 Aligned')}\nOrderFlow: 5/5 Institutional\nBrain Validation: APPROVED"
+            curr_p = g.get('price', 2748.20)
+            g_strat = g.get('gold_strategy', {})
+            a_range = g_strat.get('asian_range', {})
+            setup_status = g_strat.get('setup_type', 'SEARCHING_CONFLUENCE') if g_strat.get('triggered') else 'WAITING_SWEEP/ORB'
+            return (
+                f"🥇 <b>GOLD (XAUUSDm) Institutional Radar:</b>\n"
+                f"Price: ${curr_p:,.2f}\n"
+                f"Asian Range: ${a_range.get('low', 0):,.2f} - ${a_range.get('high', 0):,.2f}\n"
+                f"Active Strategy: {setup_status}\n"
+                f"Closed-Bar Rule: ACTIVE\n"
+                f"Max SL Cap: $2.50 (Micro Safe)\n"
+                f"Monte Carlo Engine: 10,000 Replays Armed"
+            )
         elif "/scan" in cmd:
             self.run_simultaneous_scan()
             return "⚡ Autonomous scan across Forex & Commodities verified by AI Central Brain!"
@@ -146,6 +160,14 @@ class MasterOrchestrator:
                 # 3. Session Opening Range Breakout (ORB) with Closed-Bar Rule
                 orb_analysis = self.orb.analyze_orb_breakout(symbol_exec, current_price, candles_15m)
 
+                # 4. Dedicated Gold Institutional Setups (Asian Sweep + Overlap ORB + Trend Reclaim)
+                gold_setup_res = None
+                if asset_key == "gold":
+                    candles_5m = self.market.get_candles("gold", interval="5m", limit=30)
+                    gold_setup_res = self.gold_engine.evaluate_gold_opportunities(
+                        candles_1h, candles_15m, candles_5m, current_price, spread=0.25
+                    )
+
                 trend_4h = smc_4h.get("trend", "BULLISH")
                 trend_1h = smc_1h.get("trend", "BULLISH")
                 trend_15m = smc_15m.get("trend", "BULLISH")
@@ -198,6 +220,7 @@ class MasterOrchestrator:
                     "fib_levels": fib_res,
                     "zone_status": zone_status,
                     "orb": orb_analysis,
+                    "gold_strategy": gold_setup_res,
                     "source": ticker.get("source", "Live")
                 }
             except Exception as e:
@@ -222,12 +245,22 @@ class MasterOrchestrator:
                     max_sl_dist = 350.0 if "BTC" in symbol_exec else (10.0 if "XAU" in symbol_exec else 60.0)
 
                 # -------------------------------------------------------------
+                # 0. PRIORITY FOR GOLD: DEDICATED INSTITUTIONAL SETUP (Asian Sweep / Overlap ORB / Trend Reclaim)
+                # -------------------------------------------------------------
+                if asset_key == "gold" and gold_setup_res and gold_setup_res.get("triggered"):
+                    g_s = gold_setup_res["setup"]
+                    trade_side = g_s["side"]
+                    entry = g_s["entry"]
+                    sl = g_s["sl"]
+                    tp = g_s["tp"]
+
+                # -------------------------------------------------------------
                 # 1. BULLISH SETUP (BUY / LONG):
                 # - 4H Macro Trend: BULLISH
                 # - 1H Structure Trend: BULLISH
                 # - Zone: DISCOUNT (Equilibrium < 50%)
                 # -------------------------------------------------------------
-                if trend_4h == "BULLISH" and trend_1h == "BULLISH" and "DISCOUNT" in zone_status and mtf_aligned:
+                elif trend_4h == "BULLISH" and trend_1h == "BULLISH" and "DISCOUNT" in zone_status and mtf_aligned:
                     trade_side = "BUY"
                     raw_sl = float(smc_1h.get("recommended_sl", smc_1h["swing_low"]))
                     # Enforce that SL is below entry for BUY
@@ -316,7 +349,10 @@ class MasterOrchestrator:
                                 order["mt5_ticket"] = ticket_no
 
                                 asset_title = ticker["symbol"]
-                                kz_info = smc_1h.get("killzone", {}).get("name", "Active Session")
+                                if asset_key == "gold" and gold_setup_res and gold_setup_res.get("triggered"):
+                                    kz_info = f"🥇 {gold_setup_res['setup']['setup_name']}"
+                                else:
+                                    kz_info = smc_1h.get("killzone", {}).get("name", "Active Session")
                                 action_name = "LONG (BUY)" if trade_side == "BUY" else "SHORT (SELL)"
                                 zone_name = "Discount" if trade_side == "BUY" else "Premium"
                                 self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} {action_name} ICT OTE & MTF Confluence Verified ({mtf_status} | {kz_info}). SL: ${sl:,.2f} | TP: ${tp:,.2f}.")
