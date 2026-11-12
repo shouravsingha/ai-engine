@@ -23,6 +23,10 @@ from app.core.ai_brain import AIBrainOverseer
 from app.agency.branding_engine import BrandingEngine
 from app.agency.webhook_dispatcher import SocialWebhookDispatcher
 from app.core.telegram_bot import TelegramSentinelBot
+from app.data.db_manager import DatabaseManager
+from app.data.data_collector import DataCollector
+from app.learning.journal import TradeJournal
+from app.agents.decision_desk import DecisionDesk
 
 class MasterOrchestrator:
     def __init__(self):
@@ -45,6 +49,12 @@ class MasterOrchestrator:
         self.exness = ExnessBridge(command_queue=self.cloud_command_queue)
         self.branding = BrandingEngine()
         self.webhooks = SocialWebhookDispatcher()
+
+        # Human-Like Trading Desk & Institutional Learning Layer
+        self.db_manager = DatabaseManager()
+        self.data_collector = DataCollector(db=self.db_manager)
+        self.journal = TradeJournal(db=self.db_manager)
+        self.decision_desk = DecisionDesk(risk_manager=self.risk, journal=self.journal)
         
         # Telegram Sentinel Bot
         self.telegram = TelegramSentinelBot(
@@ -53,12 +63,15 @@ class MasterOrchestrator:
             command_handler=self.handle_telegram_command
         )
 
-        # 7 Cute 3D Robot Employees supervised by AI Central Brain
+        # 10 Robot Specialist Workforce (Workforce 2.0 Masterplan)
         self.agents = [
-            {"id": "PA_01", "name": "Alex", "role": "Chief Quant", "tag": "PA_01", "dept": "Trading", "status": "Brain Synced", "color": "#facc15"},
+            {"id": "PA_01", "name": "Alex", "role": "Chief Quant (Trend)", "tag": "PA_01", "dept": "Trading", "status": "Brain Synced", "color": "#facc15"},
             {"id": "LUC_3", "name": "David", "role": "Fibonacci Master", "tag": "LUC_3", "dept": "Trading", "status": "0.618 OTE Armed", "color": "#3b82f6"},
-            {"id": "PA_02", "name": "Marcus", "role": "Risk Officer", "tag": "PA_02", "dept": "Trading", "status": "1% Capital Shield", "color": "#22c55e"},
-            {"id": "PA_14", "name": "Leo", "role": "Execution Trader", "tag": "PA_14 US$ 20.21", "dept": "Trading", "status": "Exness MT5 Live", "color": "#06b6d4"},
+            {"id": "PA_02", "name": "Marcus", "role": "Risk Officer (Sovereign)", "tag": "PA_02", "dept": "Risk", "status": "1% Capital Shield", "color": "#22c55e"},
+            {"id": "PA_14", "name": "Leo", "role": "Execution Trader", "tag": "PA_14 US$ 20.21", "dept": "Execution", "status": "Exness MT5 Live", "color": "#06b6d4"},
+            {"id": "PA_09", "name": "Kai", "role": "OrderFlow Tape Reader", "tag": "PA_09", "dept": "Trading", "status": "L2 Volatility Active", "color": "#38bdf8"},
+            {"id": "PA_05", "name": "Zara", "role": "Macro & News Scout", "tag": "PA_05", "dept": "Macro", "status": "CPI/NFP Radar", "color": "#ec4899"},
+            {"id": "PA_21", "name": "Aria", "role": "Forensic Journal Auditor", "tag": "PA_21", "dept": "Compliance", "status": "Audit Sync Active", "color": "#10b981"},
             {"id": "PA_16", "name": "Sophia", "role": "Brand Director", "tag": "Conta_1612", "dept": "Media", "status": "Webhooks Armed", "color": "#f97316"},
             {"id": "PA_07", "name": "Mia", "role": "Viral Copywriter", "tag": "PA_07", "dept": "Media", "status": "Drafting Thread", "color": "#a855f7"},
             {"id": "PA_18", "name": "Noah", "role": "Reels & Script Master", "tag": "PA_18", "dept": "Media", "status": "Hook Testing", "color": "#818cf8"}
@@ -78,7 +91,16 @@ class MasterOrchestrator:
             ex_stat = "CONNECTED" if self.exness.connected else "STANDBY"
             gold_cd = int(max(0, self.symbol_cooldowns.get("XAUUSDm", 0.0) - time.time()) // 60)
             cd_info = f"Cooldown ({gold_cd}m)" if gold_cd > 0 else "Ready"
-            return f"🧠 <b>AI Central Brain:</b> ACTIVE (IQ 185)\nOffice: 7/7 Robots Coached\nExness MT5: {ex_stat} (#{self.exness.account_id})\nBalance: ${self.exness.balance:,.2f}\nGold Radar: {cd_info}"
+            return f"🧠 <b>AI Central Brain:</b> ACTIVE (IQ 185)\nOffice: {len(self.agents)}/{len(self.agents)} Robots Coached\nExness MT5: {ex_stat} (#{self.exness.account_id})\nBalance: ${self.exness.balance:,.2f}\nGold Radar: {cd_info}"
+        elif "/desk" in cmd:
+            decisions = self.journal.get_recent_decisions(limit=3)
+            if not decisions:
+                return "🏛️ <b>Decision Desk:</b> Standing by. Multi-agent debate monitoring live feeds."
+            latest = decisions[0]
+            return f"🏛️ <b>Decision Desk Audit:</b>\nSymbol: {latest['symbol']} ({latest['timeframe']})\nBias: {latest['consensus_bias']} ({latest['confidence']}%)\nTrigger: {latest['trigger_reason']}\nRisk Status: {latest['risk_status']}"
+        elif "/edge" in cmd:
+            stats = self.journal.analyze_statistical_edge()
+            return f"🧪 <b>Statistical Edge Audit:</b>\nTotal Trades: {stats['total_trades']}\nWin Rate: {stats['win_rate']}%\nAvg R: {stats['avg_r']}R\nProfit Factor: {stats['profit_factor']}\nValidated Setups: {len(stats['statistically_validated_setups'])}"
         elif "/brain" in cmd:
             b = self.brain.get_status()
             return f"🧠 <b>AI Central Brain Diagnostics:</b>\nCognitive Load: {b['cognitive_load']}\nDecisions Audited: {b['metrics']['decisions_audited']}\nMistakes Prevented: {b['metrics']['mistakes_prevented']}\nSystem IQ: {b['metrics']['system_iq']}"
