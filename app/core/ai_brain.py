@@ -35,8 +35,8 @@ class AIBrainOverseer:
         }
         self.managed_positions_state: Dict[int, Dict[str, Any]] = {}
 
-    def audit_trade_proposal(self, agent_name: str, symbol: str, side: str, rrr: float, risk_pct: float, dollar_risk: float = 0.0, balance: float = 50000.0) -> Dict[str, Any]:
-        """Audits agent trade setups. Enforces strict ICT/SMC risk rules & psychology circuit breakers."""
+    def audit_trade_proposal(self, agent_name: str, symbol: str, side: str, rrr: float, risk_pct: float, dollar_risk: float = 0.0, balance: float = 50000.0, time_machine_audit: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Audits agent trade setups. Enforces strict ICT/SMC risk rules, Monte Carlo Time Machine odds & psychology circuit breakers."""
         now_ts = datetime.now().timestamp()
         now_str = datetime.now().strftime("%H:%M:%S")
 
@@ -50,6 +50,17 @@ class AIBrainOverseer:
         if balance < 50.0 and dollar_risk > 1.25:
             correction = f"DOLLAR CEILING VIOLATION: Risk of ${dollar_risk:.2f} exceeds micro account maximum ($1.25). Rejected."
             self.brain_audits.insert(0, {"time": now_str, "type": "RISK_CEILING_REJECT", "agent": agent_name, "message": correction, "status": "BLOCKED"})
+            return {"approved": False, "corrected": True, "correction_text": correction}
+
+        # Rule 6: Monte Carlo Time Machine Probability & Expected Value Check
+        if time_machine_audit and not time_machine_audit.get("approved", True):
+            verdict = time_machine_audit.get("verdict", "NEGATIVE_EDGE")
+            win_p = time_machine_audit.get("resolved_winrate_pct", 0.0)
+            be_p = time_machine_audit.get("breakeven_winrate_pct", 50.0)
+            exp_r = time_machine_audit.get("expected_r", 0.0)
+            correction = f"TIME MACHINE VETO for {symbol}: Monte Carlo odds reflect {verdict} (Win rate {win_p}% vs {be_p}% break-even, Exp R: {exp_r:+.2f}). Trade cancelled."
+            self.brain_audits.insert(0, {"time": now_str, "type": "TIME_MACHINE_VETO", "agent": "Time Machine AI", "message": correction, "status": "BLOCKED"})
+            self.learning_metrics["mistakes_prevented"] += 1
             return {"approved": False, "corrected": True, "correction_text": correction}
 
         # Psychology Rule: Circuit Breaker on tilt / consecutive losses

@@ -120,6 +120,26 @@ def get_cloud_status():
         "meta_account_id": gw.meta_account_id
     }
 
+@app.get("/api/timemachine/simulate")
+def get_timemachine_simulation(symbol: str = "XAUUSDm", side: str = "BUY", replays: int = 2500):
+    """Runs on-demand Monte Carlo probability replay for any asset."""
+    g = orchestrator.multi_market_matrix.get("gold", {})
+    curr_p = g.get("price", 2748.20)
+    sl = curr_p - 2.5 if side == "BUY" else curr_p + 2.5
+    tp = curr_p + 6.5 if side == "BUY" else curr_p - 6.5
+    res = orchestrator.time_machine.simulate_trade(symbol, side, curr_p, sl, tp, replays=replays)
+    return JSONResponse(res)
+
+@app.get("/api/orb/status")
+def get_orb_status():
+    """Returns current active market session and 15m ORB range status."""
+    sess = orchestrator.orb.get_current_session()
+    matrix = orchestrator.multi_market_matrix
+    return JSONResponse({
+        "session": sess,
+        "orb_matrix": {k: v.get("orb") for k, v in matrix.items() if "orb" in v}
+    })
+
 @app.post("/api/risk/mode")
 def set_risk_mode(data: RiskModeInput):
     mode = data.mode.lower()

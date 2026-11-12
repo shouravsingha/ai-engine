@@ -16,6 +16,8 @@ from app.trading.risk_manager import RiskManager
 from app.trading.demo_account import DemoAccount
 from app.trading.exness_bridge import ExnessBridge
 from app.trading.orderflow_engine import OrderFlowEngine
+from app.trading.time_machine import TimeMachineEngine
+from app.trading.orb_engine import SessionORBEngine
 from app.core.ai_brain import AIBrainOverseer
 from app.agency.branding_engine import BrandingEngine
 from app.agency.webhook_dispatcher import SocialWebhookDispatcher
@@ -34,6 +36,8 @@ class MasterOrchestrator:
         self.smc_engines = self.smc_engines_1h # Backward compatibility
         self.fib = FibonacciEngine()
         self.risk = RiskManager(risk_percent=1.0, min_rrr=2.5)
+        self.time_machine = TimeMachineEngine(default_replays=2500, horizon_bars=36)
+        self.orb = SessionORBEngine(or_minutes=15, default_target_r=2.5)
         self.account = DemoAccount(initial_capital=50000.0)
         self.cloud_command_queue = []
         self.exness = ExnessBridge(command_queue=self.cloud_command_queue)
@@ -77,6 +81,15 @@ class MasterOrchestrator:
         elif "/scan" in cmd:
             self.run_simultaneous_scan()
             return "⚡ Autonomous scan across Forex & Commodities verified by AI Central Brain!"
+        elif "/timemachine" in cmd:
+            g = self.multi_market_matrix.get("gold", {})
+            curr_p = g.get("price", 2748.20)
+            res = self.time_machine.simulate_trade("XAUUSDm", "BUY", curr_p, curr_p - 2.0, curr_p + 5.0, replays=1000)
+            return f"⏳ <b>Time Machine Monte Carlo (Gold M5):</b>\nVerdict: {res['verdict']}\nWin Odds: {res['prob_target_pct']}%\nStop Odds: {res['prob_stop_pct']}%\nExpected R: {res['expected_r']:+.2f}\nReplays: 1,000 paths"
+        elif "/orb" in cmd:
+            sess = self.orb.get_current_session()
+            g_orb = self.multi_market_matrix.get("gold", {}).get("orb", {})
+            return f"🕒 <b>Session ORB Engine:</b>\nActive Session: {sess['name']} ({sess['key']})\nGold ORB Status: {g_orb.get('status', 'ANALYZED')}\nClosed-Bar Rule: ACTIVE"
         return "Directive processed by TradingAI Core."
 
     def send_agent_message(self, agent_name: str, role: str, message: str):
@@ -115,6 +128,7 @@ class MasterOrchestrator:
 
         matrix = {}
         for asset_key in ["gold", "btc", "eth"]:
+            symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDm" if asset_key == "btc" else "ETHUSDm")
             try:
                 ticker = tickers[asset_key]
                 current_price = ticker["price"]
@@ -129,6 +143,9 @@ class MasterOrchestrator:
                 smc_1h = self.smc_engines_1h[asset_key].analyze_candles(candles_1h)
                 smc_15m = self.smc_engines_15m[asset_key].analyze_candles(candles_15m)
 
+                # 3. Session Opening Range Breakout (ORB) with Closed-Bar Rule
+                orb_analysis = self.orb.analyze_orb_breakout(symbol_exec, current_price, candles_15m)
+
                 trend_4h = smc_4h.get("trend", "BULLISH")
                 trend_1h = smc_1h.get("trend", "BULLISH")
                 trend_15m = smc_15m.get("trend", "BULLISH")
@@ -139,7 +156,7 @@ class MasterOrchestrator:
                 fib_res = self.fib.calculate_levels(swing_high, swing_low, trend_1h)
                 zone_status = self.fib.check_zone(current_price, fib_res.get("equilibrium_50", current_price), trend_1h)
 
-                # 3. Calculate MTF Confluence Score & Institutional Bias (BUY & SELL)
+                # 4. Calculate MTF Confluence Score & Institutional Bias (BUY & SELL)
                 bull_count = (1 if trend_4h == "BULLISH" else 0) + (1 if trend_1h == "BULLISH" else 0) + (1 if trend_15m == "BULLISH" else 0)
                 bear_count = (1 if trend_4h == "BEARISH" else 0) + (1 if trend_1h == "BEARISH" else 0) + (1 if trend_15m == "BEARISH" else 0)
 
@@ -180,6 +197,7 @@ class MasterOrchestrator:
                     "swing_low": swing_low,
                     "fib_levels": fib_res,
                     "zone_status": zone_status,
+                    "orb": orb_analysis,
                     "source": ticker.get("source", "Live")
                 }
             except Exception as e:
@@ -256,7 +274,12 @@ class MasterOrchestrator:
                         trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, trade_side, entry, sl, tp, symbol=symbol_exec)
                         if trade_plan:
                             vol = trade_plan["volume"]
-                            # 1. AUDIT BY AI CENTRAL NEURAL BRAIN
+                            # 1. TIME MACHINE MONTE CARLO PROBABILITY SIMULATION
+                            tm_audit = self.time_machine.simulate_trade(
+                                symbol_exec, trade_side, entry, sl, tp, candles=candles_15m, replays=2500
+                            )
+
+                            # 2. AUDIT BY AI CENTRAL NEURAL BRAIN
                             audit = self.brain.audit_trade_proposal(
                                 "Alex & Marcus",
                                 symbol_exec,
@@ -264,9 +287,13 @@ class MasterOrchestrator:
                                 trade_plan["risk_reward_ratio"],
                                 1.0,
                                 dollar_risk=trade_plan["dollar_risk"],
-                                balance=self.exness.balance
+                                balance=self.exness.balance,
+                                time_machine_audit=tm_audit
                             )
                             if not audit.get("approved", True):
+                                reject_reason = audit.get("correction_text", "Audit rejected")
+                                self.log(f"🛑 Trade Rejected by Brain/TimeMachine for {symbol_exec}: {reject_reason}")
+                                self.send_agent_message("Time Machine", "Quant Simulator", f"🛑 VETO: {symbol_exec} {trade_side} rejected. {reject_reason}")
                                 continue
 
                             # Check if MT5 Algo Trading is active before sending order
@@ -295,6 +322,10 @@ class MasterOrchestrator:
                                 self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} {action_name} ICT OTE & MTF Confluence Verified ({mtf_status} | {kz_info}). SL: ${sl:,.2f} | TP: ${tp:,.2f}.")
                                 self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ICT DISPLACEMENT: Fair Value Gap CE filled on {asset_title} for {action_name}!")
                                 self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} tagged ICT 0.705 sweet spot at ${entry:,.2f} in {zone_name} Zone.")
+                                tm_verdict = tm_audit.get("verdict", "VERIFIED")
+                                tm_win = tm_audit.get("resolved_winrate_pct", 50.0)
+                                tm_exp = tm_audit.get("expected_r", 0.0)
+                                self.send_agent_message("Time Machine", "Quant Simulator", f"⏳ TIME MACHINE PASS: {symbol_exec} {action_name} | Win Odds: {tm_win}% vs {tm_audit.get('breakeven_winrate_pct')}% BE | Exp R: {tm_exp:+.2f} ({tm_verdict}).")
                                 self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED ({trade_side}) on Exness MT5! Ticket #{ticket_no} active with strict ${abs(entry-sl):.2f} risk cap.")
 
                                 self.telegram.send_trade_signal(order, asset=f"{asset_title} [{mtf_status} · {kz_info}]")
