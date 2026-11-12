@@ -126,6 +126,65 @@ class TestSystemIntegrity(unittest.TestCase):
         self.assertEqual(actions[0]["action"], "close_position")
         self.assertIn("EMERGENCY CIRCUIT BREAKER", actions[0]["reason"])
 
+    def test_brain_patient_breakeven_shield(self):
+        # 1. Micro-profit ($0.50) must NOT prematurely trigger Break-Even (give room to breathe)
+        mock_pos_small = [{
+            "ticket": 2001,
+            "symbol": "XAUUSDm",
+            "side": "BUY",
+            "open_price": 2750.0,
+            "current_price": 2750.50,
+            "sl": 2748.0,
+            "tp": 2760.0,
+            "profit": 0.50
+        }]
+        actions_small = self.brain.evaluate_open_positions(mock_pos_small, {})
+        self.assertEqual(len(actions_small), 0, "Micro-profit must NOT choke trade with premature Break-Even")
+
+        # 2. Substantial profit (+$2.60 >= $2.50) triggers Patient Break-Even Shield with +$0.30 cushion
+        mock_pos_be = [{
+            "ticket": 2001,
+            "symbol": "XAUUSDm",
+            "side": "BUY",
+            "open_price": 2750.0,
+            "current_price": 2752.60,
+            "sl": 2748.0,
+            "tp": 2760.0,
+            "profit": 2.60
+        }]
+        actions_be = self.brain.evaluate_open_positions(mock_pos_be, {})
+        self.assertEqual(len(actions_be), 1)
+        self.assertEqual(actions_be[0]["action"], "modify_sl")
+        self.assertEqual(actions_be[0]["new_sl"], 2750.30, "Break-even must lock in $0.30 cushion")
+        self.assertIn("BREAK-EVEN SHIELD ARMED", actions_be[0]["reason"])
+
+    def test_brain_wide_institutional_trailing(self):
+        # Trade reached BE, now surges to +$4.50 profit
+        mock_pos = [{
+            "ticket": 2002,
+            "symbol": "XAUUSDm",
+            "side": "BUY",
+            "open_price": 2750.0,
+            "current_price": 2752.60,
+            "sl": 2748.0,
+            "tp": 2760.0,
+            "profit": 2.60
+        }]
+        # First trigger BE
+        self.brain.evaluate_open_positions(mock_pos, {})
+
+        # Now price reaches 2754.50 (+4.50 profit)
+        mock_pos[0]["current_price"] = 2754.50
+        mock_pos[0]["profit"] = 4.50
+        mock_pos[0]["sl"] = 2750.30
+
+        actions_trail = self.brain.evaluate_open_positions(mock_pos, {})
+        self.assertEqual(len(actions_trail), 1)
+        self.assertEqual(actions_trail[0]["action"], "modify_sl")
+        expected_sl = round(2754.50 - 1.80, 2)  # 2752.70 ($1.80 breathing buffer)
+        self.assertEqual(actions_trail[0]["new_sl"], expected_sl)
+        self.assertIn("INSTITUTIONAL TRAIL", actions_trail[0]["reason"])
+
     def test_brain_time_machine_veto(self):
         tm_negative = {
             "approved": False,
@@ -161,6 +220,32 @@ class TestSystemIntegrity(unittest.TestCase):
         orch.run_simultaneous_scan()
         self.assertIn("gold", orch.multi_market_matrix)
         self.assertIn("orb", orch.multi_market_matrix["gold"])
+
+    def test_orchestrator_anti_churn_cooldown(self):
+        orch = MasterOrchestrator()
+        import time
+        # Set 15-minute cooldown on XAUUSDm
+        orch.symbol_cooldowns["XAUUSDm"] = time.time() + 900.0
+
+        # Verify command status reflects active cooldown
+        gold_status = orch.handle_telegram_command("/gold")
+        self.assertIn("COOLING DOWN", gold_status)
+
+        # Verify remaining cooldown is positive
+        rem = orch.symbol_cooldowns["XAUUSDm"] - time.time()
+        self.assertGreater(rem, 800.0)
+
+    def test_orchestrator_closed_trade_triggers_cooldown(self):
+        orch = MasterOrchestrator()
+        import time
+        # Simulate MT5 position closing
+        orch._last_known_open_symbols = {"XAUUSDm"}
+        orch.exness.open_positions = []  # No longer open
+
+        orch.evaluate_and_defend_positions()
+        # Cooldown must be automatically armed for 15 minutes
+        self.assertIn("XAUUSDm", orch.symbol_cooldowns)
+        self.assertGreater(orch.symbol_cooldowns["XAUUSDm"], time.time() + 850.0)
 
     # -------------------------------------------------------------
     # 6. FASTAPI ENDPOINTS TEST

@@ -173,100 +173,22 @@ class AIBrainOverseer:
                 continue
 
             # -------------------------------------------------------------
-            # RULE 1: CAPITAL PRESERVATION HARVEST (NEVER LET A WINNER TURN RED)
-            # If the trade was up nicely (+$0.75+) and profit has decayed by > 65%
-            # or is about to touch entry, BANK THE PROFIT IMMEDIATELY!
+            # RULE 1: PATIENT BREAK-EVEN SHIELD (GIVES TRADES ROOM TO BREATHE)
+            # Never choke trades on micro-cents ($0.45)! 
+            # In Gold, $0.50-$1.00 is normal candle breathing.
+            # Only arm Break-Even once profit reaches at least +1.2R (+$2.50+ on Gold).
+            # Moves SL to entry price + spread cushion ($0.30) so trade is 100% risk-free.
             # -------------------------------------------------------------
-            if highest_profit >= 0.75 and profit <= (highest_profit * 0.35) and profit > 0.05:
-                actions.append({
-                    "action": "close_position",
-                    "ticket": ticket,
-                    "symbol": symbol,
-                    "reason": f"⚡ CAPITAL PRESERVATION HARVEST: {symbol} peaked at +${highest_profit:.2f}. Securing remaining +${profit:.2f} before market pulls back into red."
-                })
-                self.brain_audits.insert(0, {
-                    "time": now_str,
-                    "type": "CAPITAL_PRESERVATION",
-                    "agent": "Marcus (Risk Guardian)",
-                    "message": f"Secured +${profit:.2f} on {symbol} #{ticket}. Peak was +${highest_profit:.2f}. Winner protected.",
-                    "status": "HARVESTED"
-                })
-                continue
-
-            # -------------------------------------------------------------
-            # RULE 2: TIME-BASED EXHAUSTION EXIT (ANTI-OVERHOLDING)
-            # If held for > 35 minutes and has decent profit (+$0.40+), but no longer
-            # making new highs, exit and free capital for fresh killzone setups!
-            # -------------------------------------------------------------
-            if trade_duration_mins > 35.0 and profit >= 0.40 and (now - state["peak_time"]).total_seconds() > (15 * 60):
-                actions.append({
-                    "action": "close_position",
-                    "ticket": ticket,
-                    "symbol": symbol,
-                    "reason": f"⏰ TIME-BASED EXHAUSTION EXIT: {symbol} held {int(trade_duration_mins)}m without new highs. Banking +${profit:.2f} profit."
-                })
-                self.brain_audits.insert(0, {
-                    "time": now_str,
-                    "type": "EXHAUSTION_EXIT",
-                    "agent": "Alex & Marcus",
-                    "message": f"Time exit on {symbol} #{ticket}: held {int(trade_duration_mins)}m, banked +${profit:.2f}.",
-                    "status": "HARVESTED"
-                })
-                continue
-
-            # -------------------------------------------------------------
-            # RULE 3: ICT MARKET STRUCTURE SHIFT (MSS) IN REVERSE
-            # If 15m/1H market matrix flipped to BEARISH while holding BUY in profit
-            # -------------------------------------------------------------
-            asset_key = "gold" if "XAU" in symbol else ("btc" if "BTC" in symbol else ("eth" if "ETH" in symbol else ""))
-            if asset_key and asset_key in market_matrix:
-                asset_data = market_matrix[asset_key]
-                trend_15m = asset_data.get("trend_15m", asset_data.get("trend", "BULLISH"))
-                if side == "BUY" and trend_15m == "BEARISH" and profit > 0.25:
-                    actions.append({
-                        "action": "close_position",
-                        "ticket": ticket,
-                        "symbol": symbol,
-                        "reason": f"⚡ ICT MSS REVERSAL EXIT: 15m market structure shifted to BEARISH. Banking +${profit:.2f} early."
-                    })
-                    self.brain_audits.insert(0, {
-                        "time": now_str,
-                        "type": "MSS_REVERSAL_EXIT",
-                        "agent": "Marcus & David",
-                        "message": f"15m MSS Bearish detected on {symbol}. Harvested +${profit:.2f}.",
-                        "status": "HARVESTED"
-                    })
-                    continue
-                elif side == "SELL" and trend_15m == "BULLISH" and profit > 0.25:
-                    actions.append({
-                        "action": "close_position",
-                        "ticket": ticket,
-                        "symbol": symbol,
-                        "reason": f"⚡ ICT MSS REVERSAL EXIT: 15m market structure shifted to BULLISH. Banking +${profit:.2f} early."
-                    })
-                    self.brain_audits.insert(0, {
-                        "time": now_str,
-                        "type": "MSS_REVERSAL_EXIT",
-                        "agent": "Marcus & David",
-                        "message": f"15m MSS Bullish detected on {symbol}. Harvested +${profit:.2f} on short position.",
-                        "status": "HARVESTED"
-                    })
-                    continue
-
-            # -------------------------------------------------------------
-            # RULE 4: FAST BREAK-EVEN SHIELD (Profit >= +$0.45)
-            # Moves SL to entry price + spread cushion so trade is 100% risk-free!
-            # -------------------------------------------------------------
-            if profit >= 0.45 and not state.get("breakeven_set"):
+            min_be_profit = 2.50 if ("XAU" in symbol or "BTC" in symbol) else 1.50
+            if profit >= min_be_profit and not state.get("breakeven_set"):
                 can_shield = False
                 new_sl = open_price
+                cushion = 0.30 if "XAU" in symbol else 0.15
                 if side == "BUY" and (current_sl == 0.0 or current_sl < open_price):
-                    buffer = max(0.0001, (current_price - open_price) * 0.12)
-                    new_sl = round(open_price + buffer, digits)
+                    new_sl = round(open_price + cushion, digits)
                     can_shield = True
                 elif side == "SELL" and (current_sl == 0.0 or current_sl > open_price):
-                    buffer = max(0.0001, (open_price - current_price) * 0.12)
-                    new_sl = round(open_price - buffer, digits)
+                    new_sl = round(open_price - cushion, digits)
                     can_shield = True
 
                 if can_shield:
@@ -276,7 +198,7 @@ class AIBrainOverseer:
                         "symbol": symbol,
                         "new_sl": new_sl,
                         "new_tp": current_tp,
-                        "reason": f"🛡️ BREAK-EVEN SHIELD ARMED: Profit is +${profit:.2f}. SL moved to {new_sl} (Zero Risk)."
+                        "reason": f"🛡️ BREAK-EVEN SHIELD ARMED: Substantial profit (+${profit:.2f}) reached. SL moved to {new_sl} (Locked +${cushion:.2f} cushion, Risk-Free)."
                     })
                     state["breakeven_set"] = True
                     state["last_trailed_sl"] = new_sl
@@ -286,71 +208,65 @@ class AIBrainOverseer:
                         "time": now_str,
                         "type": "BREAKEVEN_SHIELD",
                         "agent": "Marcus (Risk Guardian)",
-                        "message": f"Shielded {symbol} #{ticket} at {new_sl}. Zero capital risk remaining.",
+                        "message": f"Break-Even armed on {symbol} #{ticket} at {new_sl} (+${profit:.2f} profit). Trade completely risk-free.",
                         "status": "EXECUTED"
                     })
                     continue
 
             # -------------------------------------------------------------
-            # RULE 5: MULTI-TIER DYNAMIC STRUCTURAL TRAILING STOP
-            # Tier 1 (+$0.75+): Lock 40% of gains
-            # Tier 2 (+$1.30+): Lock 55% of gains
-            # Tier 3 (+$2.00+): Lock 70% of gains
+            # RULE 2: WIDE INSTITUTIONAL TRAILING STOP (PATIENT HARVEST)
+            # Only trails when trade is DEEP in profit (+2.0R+, e.g. +$4.00+ on Gold).
+            # Maintains a generous breathing buffer ($1.80 away from price) so normal
+            # market wiggles do NOT prematurely stop out winning trades!
             # -------------------------------------------------------------
-            if profit >= 0.75:
-                lock_pct = 0.40
-                stage = 2
-                if profit >= 2.00:
-                    lock_pct = 0.70
-                    stage = 4
-                elif profit >= 1.30:
-                    lock_pct = 0.55
-                    stage = 3
+            min_trail_profit = 4.00 if ("XAU" in symbol or "BTC" in symbol) else 2.50
+            trail_buffer = 1.80 if "XAU" in symbol else 1.00
+            min_step = 0.50 if "XAU" in symbol else 0.25
 
-                min_step = 0.30 if ("XAU" in symbol or "BTC" in symbol) else 0.08
+            if profit >= min_trail_profit and state.get("breakeven_set"):
                 last_trailed = state.get("last_trailed_sl", current_sl)
 
                 if side == "BUY":
-                    profit_distance = current_price - open_price
-                    target_sl = round(open_price + (profit_distance * lock_pct), digits)
-                    if target_sl > (last_trailed + min_step) and target_sl > (current_sl + min_step):
+                    target_sl = round(current_price - trail_buffer, digits)
+                    # Must be higher than open_price and at least min_step above previous SL
+                    if target_sl > open_price and target_sl > (last_trailed + min_step) and target_sl > (current_sl + min_step):
                         actions.append({
                             "action": "modify_sl",
                             "ticket": ticket,
                             "symbol": symbol,
                             "new_sl": target_sl,
                             "new_tp": current_tp,
-                            "reason": f"📈 TRAILING STOP TIER {stage}: Locking in {int(lock_pct*100)}% of profit (+${profit:.2f}). New SL: {target_sl}."
+                            "reason": f"📈 INSTITUTIONAL TRAIL: Profit is +${profit:.2f}. Trailing $1.80 behind at {target_sl} to lock in gains without choking."
                         })
                         state["last_trailed_sl"] = target_sl
-                        state["trail_stage"] = stage
+                        state["trail_stage"] = 2
                         self.brain_audits.insert(0, {
                             "time": now_str,
-                            "type": f"TRAILING_TIER_{stage}",
+                            "type": "INSTITUTIONAL_TRAIL",
                             "agent": "Alex & David",
-                            "message": f"Trailed {symbol} #{ticket} to {target_sl} (Locked {int(lock_pct*100)}% of +${profit:.2f}).",
+                            "message": f"Trailed {symbol} #{ticket} to {target_sl} (Locked +${round(target_sl - open_price, 2):.2f} profit with generous room).",
                             "status": "ADVANCED"
                         })
 
                 elif side == "SELL":
-                    profit_distance = open_price - current_price
-                    target_sl = round(open_price - (profit_distance * lock_pct), digits)
-                    if (last_trailed == 0.0 or target_sl < (last_trailed - min_step)) and (current_sl == 0.0 or target_sl < (current_sl - min_step)):
+                    target_sl = round(current_price + trail_buffer, digits)
+                    # Must be lower than open_price and at least min_step below previous SL
+                    if target_sl < open_price and (last_trailed == 0.0 or target_sl < (last_trailed - min_step)) and (current_sl == 0.0 or target_sl < (current_sl - min_step)):
                         actions.append({
                             "action": "modify_sl",
                             "ticket": ticket,
                             "symbol": symbol,
                             "new_sl": target_sl,
                             "new_tp": current_tp,
-                            "reason": f"📈 TRAILING STOP TIER {stage}: Locking in {int(lock_pct*100)}% of profit (+${profit:.2f}). New SL: {target_sl}."
+                            "reason": f"📈 INSTITUTIONAL TRAIL: Profit is +${profit:.2f}. Trailing $1.80 above at {target_sl} to lock in gains without choking."
                         })
                         state["last_trailed_sl"] = target_sl
-                        state["trail_stage"] = stage
+                        state["trail_stage"] = 2
                         self.brain_audits.insert(0, {
                             "time": now_str,
-                            "type": f"TRAILING_TIER_{stage}",
+                            "type": "INSTITUTIONAL_TRAIL",
                             "agent": "Alex & David",
-                            "message": f"Trailed {symbol} #{ticket} to {target_sl} (Locked {int(lock_pct*100)}% of +${profit:.2f}).",
+                            "message": f"Trailed {symbol} #{ticket} to {target_sl} (Locked +${round(open_price - target_sl, 2):.2f} profit with generous room).",
                             "status": "ADVANCED"
                         })
 

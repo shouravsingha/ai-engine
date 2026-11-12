@@ -67,13 +67,18 @@ class MasterOrchestrator:
         self.agent_messages: List[Dict[str, Any]] = []
         self.system_logs: List[str] = []
         self.multi_market_matrix: Dict[str, Any] = {}
+        self.symbol_cooldowns: Dict[str, float] = {}  # symbol -> cooldown expiry timestamp (15m anti-churn)
+        self.executed_setup_signatures: Dict[str, str] = {}  # symbol -> setup signature
+        self._last_known_open_symbols: set = set()
         self.is_running = False
 
     def handle_telegram_command(self, cmd: str) -> str:
         cmd = cmd.lower().strip()
         if "/status" in cmd:
             ex_stat = "CONNECTED" if self.exness.connected else "STANDBY"
-            return f"🧠 <b>AI Central Brain:</b> ACTIVE (IQ 185)\nOffice: 7/7 Robots Coached\nExness MT5: {ex_stat} (#{self.exness.account_id})\nBalance: ${self.exness.balance:,.2f}"
+            gold_cd = int(max(0, self.symbol_cooldowns.get("XAUUSDm", 0.0) - time.time()) // 60)
+            cd_info = f"Cooldown ({gold_cd}m)" if gold_cd > 0 else "Ready"
+            return f"🧠 <b>AI Central Brain:</b> ACTIVE (IQ 185)\nOffice: 7/7 Robots Coached\nExness MT5: {ex_stat} (#{self.exness.account_id})\nBalance: ${self.exness.balance:,.2f}\nGold Radar: {cd_info}"
         elif "/brain" in cmd:
             b = self.brain.get_status()
             return f"🧠 <b>AI Central Brain Diagnostics:</b>\nCognitive Load: {b['cognitive_load']}\nDecisions Audited: {b['metrics']['decisions_audited']}\nMistakes Prevented: {b['metrics']['mistakes_prevented']}\nSystem IQ: {b['metrics']['system_iq']}"
@@ -83,13 +88,18 @@ class MasterOrchestrator:
             g_strat = g.get('gold_strategy', {})
             a_range = g_strat.get('asian_range', {})
             setup_status = g_strat.get('setup_type', 'SEARCHING_CONFLUENCE') if g_strat.get('triggered') else 'WAITING_SWEEP/ORB'
+            gold_cd = int(max(0, self.symbol_cooldowns.get("XAUUSDm", 0.0) - time.time()) // 60)
+            cd_str = f"COOLING DOWN ({gold_cd}m remaining)" if gold_cd > 0 else "ARMED (Ready)"
             return (
                 f"🥇 <b>GOLD (XAUUSDm) Institutional Radar:</b>\n"
                 f"Price: ${curr_p:,.2f}\n"
                 f"Asian Range: ${a_range.get('low', 0):,.2f} - ${a_range.get('high', 0):,.2f}\n"
                 f"Active Strategy: {setup_status}\n"
+                f"Anti-Churn Cooldown: {cd_str}\n"
                 f"Closed-Bar Rule: ACTIVE\n"
                 f"Max SL Cap: $2.50 (Micro Safe)\n"
+                f"Patient BE Shield: +$2.50\n"
+                f"Wide Trail Buffer: +$4.00 (+$1.80 breath room)\n"
                 f"Monte Carlo Engine: 10,000 Replays Armed"
             )
         elif "/scan" in cmd:
@@ -301,74 +311,91 @@ class MasterOrchestrator:
 
                 # Execute if either BUY or SELL setup triggered
                 if trade_side:
-                    # Check if already open on this symbol to prevent duplicate spam
-                    already_open = any(p.get("symbol") == symbol_exec for p in self.exness.open_positions)
-                    if not already_open:
-                        trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, trade_side, entry, sl, tp, symbol=symbol_exec)
-                        if trade_plan:
-                            vol = trade_plan["volume"]
-                            # 1. TIME MACHINE MONTE CARLO PROBABILITY SIMULATION
-                            tm_audit = self.time_machine.simulate_trade(
-                                symbol_exec, trade_side, entry, sl, tp, candles=candles_15m, replays=2500
-                            )
+                    # 1. Anti-Churning Cooldown Check (15-min freeze after symbol trade closure)
+                    cooldown_expiry = self.symbol_cooldowns.get(symbol_exec, 0.0)
+                    rem_cd = cooldown_expiry - time.time()
+                    if rem_cd > 0:
+                        # Symbol is under patient cooldown, prevent re-entry churning
+                        continue
 
-                            # 2. AUDIT BY AI CENTRAL NEURAL BRAIN
-                            audit = self.brain.audit_trade_proposal(
-                                "Alex & Marcus",
-                                symbol_exec,
-                                trade_side,
-                                trade_plan["risk_reward_ratio"],
-                                1.0,
-                                dollar_risk=trade_plan["dollar_risk"],
-                                balance=self.exness.balance,
-                                time_machine_audit=tm_audit
-                            )
-                            if not audit.get("approved", True):
-                                reject_reason = audit.get("correction_text", "Audit rejected")
-                                self.log(f"🛑 Trade Rejected by Brain/TimeMachine for {symbol_exec}: {reject_reason}")
-                                self.send_agent_message("Time Machine", "Quant Simulator", f"🛑 VETO: {symbol_exec} {trade_side} rejected. {reject_reason}")
-                                continue
+                    # 2. Check if already open on this symbol (MT5 positions OR internal account)
+                    already_open = any(p.get("symbol") == symbol_exec for p in self.exness.open_positions) or any(t.get("symbol") == symbol_exec for t in self.account.open_trades)
+                    if already_open:
+                        continue
 
-                            # Check if MT5 Algo Trading is active before sending order
-                            if not self.exness.algo_trading_enabled and self.exness.live_terminal:
-                                if not getattr(self, f"_algo_warned_{symbol_exec}", False):
-                                    self.log(f"⏸️ MT5 Algo Trading is paused. Press Ctrl+E in MT5 to allow automated execution for {symbol_exec}.")
-                                    self.send_agent_message("Marcus", "Risk Officer (PA_02)", f"⏸️ {symbol_exec} setup ready, but MT5 Algo Trading is paused. Press Ctrl+E in MT5.")
-                                    setattr(self, f"_algo_warned_{symbol_exec}", True)
-                                continue
+                    # 3. Setup Signature Deduplication (prevent executing identical setup twice)
+                    setup_sig = f"{asset_key}_{trade_side}_{round(entry, 1)}_{round(sl, 1)}"
+                    if self.executed_setup_signatures.get(symbol_exec) == setup_sig:
+                        continue
+
+                    trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, trade_side, entry, sl, tp, symbol=symbol_exec)
+                    if trade_plan:
+                        vol = trade_plan["volume"]
+                        # 1. TIME MACHINE MONTE CARLO PROBABILITY SIMULATION
+                        tm_audit = self.time_machine.simulate_trade(
+                            symbol_exec, trade_side, entry, sl, tp, candles=candles_15m, replays=2500
+                        )
+
+                        # 2. AUDIT BY AI CENTRAL NEURAL BRAIN
+                        audit = self.brain.audit_trade_proposal(
+                            "Alex & Marcus",
+                            symbol_exec,
+                            trade_side,
+                            trade_plan["risk_reward_ratio"],
+                            1.0,
+                            dollar_risk=trade_plan["dollar_risk"],
+                            balance=self.exness.balance,
+                            time_machine_audit=tm_audit
+                        )
+                        if not audit.get("approved", True):
+                            reject_reason = audit.get("correction_text", "Audit rejected")
+                            self.log(f"🛑 Trade Rejected by Brain/TimeMachine for {symbol_exec}: {reject_reason}")
+                            self.send_agent_message("Time Machine", "Quant Simulator", f"🛑 VETO: {symbol_exec} {trade_side} rejected. {reject_reason}")
+                            continue
+
+                        # Check if MT5 Algo Trading is active before sending order
+                        if not self.exness.algo_trading_enabled and self.exness.live_terminal:
+                            if not getattr(self, f"_algo_warned_{symbol_exec}", False):
+                                self.log(f"⏸️ MT5 Algo Trading is paused. Press Ctrl+E in MT5 to allow automated execution for {symbol_exec}.")
+                                self.send_agent_message("Marcus", "Risk Officer (PA_02)", f"⏸️ {symbol_exec} setup ready, but MT5 Algo Trading is paused. Press Ctrl+E in MT5.")
+                                setattr(self, f"_algo_warned_{symbol_exec}", True)
+                            continue
+                        else:
+                            setattr(self, f"_algo_warned_{symbol_exec}", False)
+
+                        # 2. REAL EXECUTION ON EXNESS MT5
+                        mt5_res = self.exness.execute_live_order(symbol_exec, trade_side, volume=vol, sl=sl, tp=tp)
+
+                        if mt5_res.get("status") in ("success", "queued"):
+                            # Record setup signature to lock out duplicates
+                            self.executed_setup_signatures[symbol_exec] = setup_sig
+
+                            # 3. Log internal order
+                            order = self.account.open_trade(trade_plan, symbol=symbol_exec)
+                            ticket_no = mt5_res.get("ticket", order["id"])
+                            order["mt5_ticket"] = ticket_no
+
+                            asset_title = ticker["symbol"]
+                            if asset_key == "gold" and gold_setup_res and gold_setup_res.get("triggered"):
+                                kz_info = f"🥇 {gold_setup_res['setup']['setup_name']}"
                             else:
-                                setattr(self, f"_algo_warned_{symbol_exec}", False)
+                                kz_info = smc_1h.get("killzone", {}).get("name", "Active Session")
+                            action_name = "LONG (BUY)" if trade_side == "BUY" else "SHORT (SELL)"
+                            zone_name = "Discount" if trade_side == "BUY" else "Premium"
+                            self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} {action_name} ICT OTE & MTF Confluence Verified ({mtf_status} | {kz_info}). SL: ${sl:,.2f} | TP: ${tp:,.2f}.")
+                            self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ICT DISPLACEMENT: Fair Value Gap CE filled on {asset_title} for {action_name}!")
+                            self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} tagged ICT 0.705 sweet spot at ${entry:,.2f} in {zone_name} Zone.")
+                            tm_verdict = tm_audit.get("verdict", "VERIFIED")
+                            tm_win = tm_audit.get("resolved_winrate_pct", 50.0)
+                            tm_exp = tm_audit.get("expected_r", 0.0)
+                            self.send_agent_message("Time Machine", "Quant Simulator", f"⏳ TIME MACHINE PASS: {symbol_exec} {action_name} | Win Odds: {tm_win}% vs {tm_audit.get('breakeven_winrate_pct')}% BE | Exp R: {tm_exp:+.2f} ({tm_verdict}).")
+                            self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED ({trade_side}) on Exness MT5! Ticket #{ticket_no} active with strict ${abs(entry-sl):.2f} risk cap.")
 
-                            # 2. REAL EXECUTION ON EXNESS MT5
-                            mt5_res = self.exness.execute_live_order(symbol_exec, trade_side, volume=vol, sl=sl, tp=tp)
-
-                            if mt5_res.get("status") in ("success", "queued"):
-                                # 3. Log internal order
-                                order = self.account.open_trade(trade_plan, symbol=symbol_exec)
-                                ticket_no = mt5_res.get("ticket", order["id"])
-                                order["mt5_ticket"] = ticket_no
-
-                                asset_title = ticker["symbol"]
-                                if asset_key == "gold" and gold_setup_res and gold_setup_res.get("triggered"):
-                                    kz_info = f"🥇 {gold_setup_res['setup']['setup_name']}"
-                                else:
-                                    kz_info = smc_1h.get("killzone", {}).get("name", "Active Session")
-                                action_name = "LONG (BUY)" if trade_side == "BUY" else "SHORT (SELL)"
-                                zone_name = "Discount" if trade_side == "BUY" else "Premium"
-                                self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 AUDIT PASS: {asset_title} {action_name} ICT OTE & MTF Confluence Verified ({mtf_status} | {kz_info}). SL: ${sl:,.2f} | TP: ${tp:,.2f}.")
-                                self.send_agent_message("Alex", "Chief Quant (PA_01)", f"🌊 ICT DISPLACEMENT: Fair Value Gap CE filled on {asset_title} for {action_name}!")
-                                self.send_agent_message("David", "Fibonacci Master (LUC_3)", f"{asset_title} tagged ICT 0.705 sweet spot at ${entry:,.2f} in {zone_name} Zone.")
-                                tm_verdict = tm_audit.get("verdict", "VERIFIED")
-                                tm_win = tm_audit.get("resolved_winrate_pct", 50.0)
-                                tm_exp = tm_audit.get("expected_r", 0.0)
-                                self.send_agent_message("Time Machine", "Quant Simulator", f"⏳ TIME MACHINE PASS: {symbol_exec} {action_name} | Win Odds: {tm_win}% vs {tm_audit.get('breakeven_winrate_pct')}% BE | Exp R: {tm_exp:+.2f} ({tm_verdict}).")
-                                self.send_agent_message("Leo", "Execution Trader (PA_14)", f"Auto-Trade EXECUTED ({trade_side}) on Exness MT5! Ticket #{ticket_no} active with strict ${abs(entry-sl):.2f} risk cap.")
-
-                                self.telegram.send_trade_signal(order, asset=f"{asset_title} [{mtf_status} · {kz_info}]")
-                                self.webhooks.broadcast_trade(order, asset=asset_title)
-                            else:
-                                fail_reason = mt5_res.get('comment') or mt5_res.get('message') or 'Rejected'
-                                self.log(f"⚠️ Trade Execution Failed for {symbol_exec}: {fail_reason}")
+                            self.telegram.send_trade_signal(order, asset=f"{asset_title} [{mtf_status} · {kz_info}]")
+                            self.webhooks.broadcast_trade(order, asset=asset_title)
+                        else:
+                            fail_reason = mt5_res.get('comment') or mt5_res.get('message') or 'Rejected'
+                            self.log(f"⚠️ Trade Execution Failed for {symbol_exec}: {fail_reason}")
 
         self.multi_market_matrix = matrix
 
@@ -378,8 +405,10 @@ class MasterOrchestrator:
         active_p = matrix["gold"]["price"] if any(t['symbol'] == 'XAUUSDm' for t in self.account.open_trades) else matrix["btc"]["price"]
         closed_trades = self.account.update_open_trades(active_p)
         for ct in closed_trades:
+            sym = ct.get('symbol', 'XAUUSDm')
+            self.symbol_cooldowns[sym] = time.time() + 900.0  # 15 minutes anti-churn cooldown
             pnl = ct.get('realized_pnl', 0.0)
-            self.log(f"🔔 TRADE SETTLED: {ct['id']} | Outcome: {ct['status']} | PnL: ${pnl:+,.2f}")
+            self.log(f"🔔 TRADE SETTLED: {ct['id']} | Outcome: {ct['status']} | PnL: ${pnl:+,.2f} | 15m Cooldown Armed for {sym}")
             self.brain.record_trade_result(pnl)
             self.telegram.send_trade_close(ct, self.exness.balance)
             self.branding.generate_firm_content("BULLISH", f"${active_p:,.2f}", ct)
@@ -387,12 +416,21 @@ class MasterOrchestrator:
     def evaluate_and_defend_positions(self):
         """
         Active AI Brain position defense:
-        1. Fast Break-Even Shield (+$0.45)
-        2. Dynamic Structural Trailing (+$0.75 / +$1.30 / +$2.00)
-        3. Capital Preservation Harvest (Prevents green trades from turning red)
-        4. Time-Based Exhaustion Exit (No more long dead holds)
-        5. ICT MSS Reversal Exit
+        1. Patient Break-Even Shield (+$2.50+ profit on Gold)
+        2. Wide Institutional Trailing Stop (+$4.00+ profit, $1.80 breathing buffer)
+        3. Emergency Hard Loss Circuit Breaker (-$1.25)
+        4. Anti-Churn Cooldown Tracking (15 min cooldown on symbol exit)
         """
+        # Track MT5 closed positions between cycles to trigger cooldown
+        current_open_symbols = {p.get("symbol") for p in self.exness.open_positions if p.get("symbol")}
+        if hasattr(self, "_last_known_open_symbols") and self._last_known_open_symbols:
+            closed_symbols = self._last_known_open_symbols - current_open_symbols
+            for cs in closed_symbols:
+                self.symbol_cooldowns[cs] = time.time() + 900.0  # 15 min cooldown
+                self.log(f"🛡️ ANTI-CHURN COOLDOWN: Position on {cs} closed. 15-minute freeze engaged to prevent instant re-entry.")
+                self.send_agent_message("Marcus", "Risk Officer (PA_02)", f"🛡️ ANTI-CHURN: {cs} position closed. Cooling down for 15 minutes before seeking new setups.")
+        self._last_known_open_symbols = current_open_symbols
+
         if not self.exness.open_positions:
             return
         actions = self.brain.evaluate_open_positions(self.exness.open_positions, self.multi_market_matrix)
@@ -413,14 +451,16 @@ class MasterOrchestrator:
                         self.log("⚠️ MT5 AutoTrading is disabled by client (Retcode 10027). Please enable Algo Trading in MT5.")
                         self._algo_warned = True
 
-            # SMART PROFIT HARVEST / EXHAUSTION EXIT / CAPITAL PRESERVATION
+            # SMART PROFIT HARVEST / EMERGENCY CIRCUIT BREAKER
             elif action_type == "close_position":
                 c_res = self.exness.close_position(act["ticket"])
                 if c_res.get("status") in ("success", "queued"):
+                    sym = act.get("symbol", "XAUUSDm")
+                    self.symbol_cooldowns[sym] = time.time() + 900.0  # 15 minutes anti-churn cooldown
                     self.send_agent_message("Marcus", "Risk Guardian (PA_02)", act["reason"])
-                    self.send_agent_message("AI Brain", "Neural Overseer", f"⚡ SMART HARVEST: {act['symbol']} #{act['ticket']} closed to bank profit.")
-                    self.telegram.send_message(f"⚡ <b>AI SMART PROFIT HARVEST:</b>\n{act['reason']}")
-                    self.log(f"⚡ Position #{act['ticket']} ({act['symbol']}): {act['reason']}")
+                    self.send_agent_message("AI Brain", "Neural Overseer", f"⚡ DEFENSE CLOSE: {sym} #{act['ticket']} settled. 15m Anti-Churn Cooldown engaged.")
+                    self.telegram.send_message(f"⚡ <b>AI POSITION DEFENSE EXIT:</b>\n{act['reason']}\n🛡️ <i>15-Minute Anti-Churn Cooldown engaged on {sym}.</i>")
+                    self.log(f"⚡ Position #{act['ticket']} ({sym}): {act['reason']}")
 
     def start_background_loop(self):
         if self.is_running:
