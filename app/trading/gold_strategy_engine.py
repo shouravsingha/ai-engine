@@ -82,7 +82,12 @@ class GoldStrategyEngine:
         }
 
     # -------------------------------------------------------------------------
-    # SETUP 1: ASIAN RANGE LIQUIDITY SWEEP + ICT MSS & OTE
+    # SETUP 1: ASIAN RANGE LIQUIDITY SWEEP + ICT MSS & OTE RETEST
+    # Follows the 3-Step Institutional Formula:
+    # 1. Sweep of Asian Liquidity (BSL / SSL)
+    # 2. Impulsive Displacement & Structure Shift (MSS)
+    # 3. Pullback into 50%-70.5% OTE / Premium-Discount zone (Never chase!)
+    # 4. Structural Invalidation SL at the sweep wick +/- buffer
     # -------------------------------------------------------------------------
     def check_setup_1_asian_sweep_ote(
         self,
@@ -91,10 +96,6 @@ class GoldStrategyEngine:
         current_price: float,
         asian_range: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """
-        Checks if London or NY swept Asian High/Low, formed a Market Structure Shift (MSS),
-        and is now retracing into the 0.618-0.705 Fibonacci OTE zone.
-        """
         if not asian_range or not asian_range.get("active") or len(candles_5m) < 6:
             return None
 
@@ -102,23 +103,29 @@ class GoldStrategyEngine:
         a_low = asian_range["low"]
         recent_bars = candles_5m[-6:]
 
-        # Check for Bearish Judas Swing: Swept Asian High, then closed back below
         highest_wick = max(b["high"] for b in recent_bars)
+        lowest_wick = min(b["low"] for b in recent_bars)
         lowest_close = min(b["close"] for b in recent_bars)
+        highest_close = max(b["close"] for b in recent_bars)
 
-        # 1. BEARISH SWEEP OF ASIAN HIGH (SELL)
+        # -------------------------------------------------------------
+        # 1. BEARISH SETUP (SELL):
+        # Step 1: Swept Asian High (BSL Purge)
+        # Step 2: Displacement back down below Asian High
+        # Step 3: Entering in Premium zone (relative to Asian Range Midpoint)
+        # Step 4: SL at highest_wick + 0.40
+        # -------------------------------------------------------------
         if highest_wick > a_high and current_price < a_high:
-            # Check displacement back down: last candle must be bearish
-            last_bar = recent_bars[-1]
-            if last_bar["close"] < last_bar["open"]:
+            a_mid = asian_range.get("mid", (a_high + a_low) / 2.0)
+            # Only sell in Premium (upper half of Asian range)
+            if current_price >= a_mid:
                 sweep_dist = round(highest_wick - a_high, 2)
                 entry = current_price
-                # Tight Stop Loss just above the Judas Sweep wick, clamped to max risk distance
+                # Structural Invalidation SL: Above the highest sweep wick
                 raw_sl = round(highest_wick + 0.40, 2)
                 sl = min(raw_sl, round(entry + self.max_gold_sl_distance, 2))
                 risk = round(sl - entry, 2)
 
-                # Ensure SL is within safe limits ($0.50 - max_gold_sl_distance)
                 if 0.50 <= risk <= self.max_gold_sl_distance:
                     # Target Asian Low or minimum 3.0R
                     target_low = min(a_low, entry - (risk * 3.0))
@@ -136,17 +143,23 @@ class GoldStrategyEngine:
                         "asian_low": a_low,
                         "sweep_wick": highest_wick,
                         "sweep_distance": sweep_dist,
-                        "confluence": "Asian BSL Purge + Bearish Displacement + Tight Structure SL"
+                        "confluence": "Asian BSL Purge + Bearish Displacement + Premium OTE Zone + Structural Invalidation SL"
                     }
 
-        # 2. BULLISH SWEEP OF ASIAN LOW (BUY)
-        lowest_wick = min(b["low"] for b in recent_bars)
+        # -------------------------------------------------------------
+        # 2. BULLISH SETUP (BUY):
+        # Step 1: Swept Asian Low (SSL Purge)
+        # Step 2: Displacement back up above Asian Low
+        # Step 3: Entering in Discount zone (relative to Asian Range Midpoint)
+        # Step 4: SL at lowest_wick - 0.40
+        # -------------------------------------------------------------
         if lowest_wick < a_low and current_price > a_low:
-            last_bar = recent_bars[-1]
-            if last_bar["close"] > last_bar["open"]:
+            a_mid = asian_range.get("mid", (a_high + a_low) / 2.0)
+            # Only buy in Discount (lower half of Asian range)
+            if current_price <= a_mid:
                 sweep_dist = round(a_low - lowest_wick, 2)
                 entry = current_price
-                # Tight Stop Loss just below the Judas Sweep low, clamped to max risk distance
+                # Structural Invalidation SL: Below the lowest sweep wick
                 raw_sl = round(lowest_wick - 0.40, 2)
                 sl = max(raw_sl, round(entry - self.max_gold_sl_distance, 2))
                 risk = round(entry - sl, 2)
@@ -167,9 +180,8 @@ class GoldStrategyEngine:
                         "asian_low": a_low,
                         "sweep_wick": lowest_wick,
                         "sweep_distance": sweep_dist,
-                        "confluence": "Asian SSL Purge + Bullish Displacement + Tight Structure SL"
+                        "confluence": "Asian SSL Purge + Bullish Displacement + Discount OTE Zone + Structural Invalidation SL"
                     }
-        return None
 
         return None
 
