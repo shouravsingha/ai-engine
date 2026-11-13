@@ -178,6 +178,13 @@ class TestSystemIntegrity(unittest.TestCase):
         mock_pos[0]["profit"] = 4.50
         mock_pos[0]["sl"] = 2750.30
 
+        # In default mode (enable_trailing_stop=False), it must NOT choke trade with trailing;
+        # keep it locked risk-free at BE and allow it to run to TP!
+        actions_default = self.brain.evaluate_open_positions(mock_pos, {})
+        self.assertEqual(len(actions_default), 0, "Default mode must NOT choke trades with continuous trailing stop")
+
+        # When trailing is explicitly enabled, it trails behind price
+        self.brain.enable_trailing_stop = True
         actions_trail = self.brain.evaluate_open_positions(mock_pos, {})
         self.assertEqual(len(actions_trail), 1)
         self.assertEqual(actions_trail[0]["action"], "modify_sl")

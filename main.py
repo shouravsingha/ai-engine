@@ -1176,7 +1176,7 @@ def index():
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px;">
                             <span id="ict-killzone-badge" style="background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.35); color: #38bdf8; padding: 2px 8px; border-radius: 5px; font-weight: 800; white-space: nowrap;">🎯 ICT Killzone: Scanning</span>
-                            <span id="brain-psy-badge" style="background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.35); color: #c084fc; padding: 2px 8px; border-radius: 5px; font-weight: 800; white-space: nowrap;" title="Capital Preservation Discipline: Green trades never turn into red losses.">🛡️ Winner Shield: Armed</span>
+                            <span id="brain-psy-badge" style="background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.35); color: #c084fc; padding: 2px 8px; border-radius: 5px; font-weight: 800; white-space: nowrap;" title="Capital Preservation Discipline: Green trades lock Break-Even risk-free and run to TP without trailing choke.">🛡️ Risk-Free Shield: Armed</span>
                         </div>
                     </div>
                 </div>
@@ -2525,8 +2525,8 @@ def index():
                                 psyBadge.style.background = 'rgba(168, 85, 247, 0.12)';
                                 psyBadge.style.borderColor = 'rgba(168, 85, 247, 0.35)';
                                 psyBadge.style.color = '#c084fc';
-                                psyBadge.innerHTML = `🛡️ Winner Shield: Active (BE +$0.45 | Trail +$0.75)`;
-                                psyBadge.title = 'Institutional Trailing & Winner Preservation active: Winning trades will never turn into losses.';
+                                psyBadge.innerHTML = `🛡️ Risk-Free Shield: Active (BE +$0.30 | Run to TP)`;
+                                psyBadge.title = 'Capital Preservation: Trades lock Break-Even (+cushion) risk-free and run to TP without premature trailing choke.';
                             }
                         }
                     }

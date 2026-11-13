@@ -31,8 +31,10 @@ class AIBrainOverseer:
             "consecutive_losses": 0,
             "cooldown_until": 0.0, # timestamp
             "daily_drawdown_limit": 3.50, # USD max loss per session
-            "daily_pnl_tracker": 0.0
+            "daily_pnl_tracker": 0.0,
+            "risk_free_mode": "BREAKEVEN_RUN_TO_TP"
         }
+        self.enable_trailing_stop = False # User directive: Don't choke trades with trailing; lock Break-Even for a 100% risk-free trade and let it run to TP
         self.managed_positions_state: Dict[int, Dict[str, Any]] = {}
 
     def audit_trade_proposal(self, agent_name: str, symbol: str, side: str, rrr: float, risk_pct: float, dollar_risk: float = 0.0, balance: float = 50000.0, time_machine_audit: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -173,11 +175,12 @@ class AIBrainOverseer:
                 continue
 
             # -------------------------------------------------------------
-            # RULE 1: PATIENT BREAK-EVEN SHIELD (GIVES TRADES ROOM TO BREATHE)
-            # Never choke trades on micro-cents ($0.45)! 
-            # In Gold, $0.50-$1.00 is normal candle breathing.
-            # Only arm Break-Even once profit reaches at least +1.2R (+$2.50+ on Gold).
-            # Moves SL to entry price + spread cushion ($0.30) so trade is 100% risk-free.
+            # RULE 1: BREAK-EVEN RISK-FREE SHIELD (GIVES TRADES ROOM TO RUN TO TP)
+            # Never choke trades prematurely! In Gold, $0.50-$1.00 is normal market wiggle.
+            # Once profit reaches safety threshold (+1.2R / +$2.50+ on Gold),
+            # move SL to entry price + spread cushion ($0.30) so trade is 100% RISK-FREE.
+            # Once Break-Even is locked, the position has ZERO loss risk and is allowed
+            # to breathe freely towards the full Take-Profit (TP) without trailing choke.
             # -------------------------------------------------------------
             min_be_profit = 2.50 if ("XAU" in symbol or "BTC" in symbol) else 1.50
             if profit >= min_be_profit and not state.get("breakeven_set"):
@@ -198,7 +201,7 @@ class AIBrainOverseer:
                         "symbol": symbol,
                         "new_sl": new_sl,
                         "new_tp": current_tp,
-                        "reason": f"🛡️ BREAK-EVEN SHIELD ARMED: Substantial profit (+${profit:.2f}) reached. SL moved to {new_sl} (Locked +${cushion:.2f} cushion, Risk-Free)."
+                        "reason": f"🛡️ BREAK-EVEN SHIELD ARMED: Substantial profit (+${profit:.2f}) reached. SL moved to {new_sl} (Locked +${cushion:.2f} cushion, 100% Risk-Free, running to TP)."
                     })
                     state["breakeven_set"] = True
                     state["last_trailed_sl"] = new_sl
@@ -208,22 +211,21 @@ class AIBrainOverseer:
                         "time": now_str,
                         "type": "BREAKEVEN_SHIELD",
                         "agent": "Marcus (Risk Guardian)",
-                        "message": f"Break-Even armed on {symbol} #{ticket} at {new_sl} (+${profit:.2f} profit). Trade completely risk-free.",
-                        "status": "EXECUTED"
+                        "message": f"Break-Even armed on {symbol} #{ticket} at {new_sl} (+${profit:.2f} profit). Trade 100% risk-free, letting it run to TP.",
+                        "status": "RISK_FREE_SECURED"
                     })
                     continue
 
             # -------------------------------------------------------------
-            # RULE 2: WIDE INSTITUTIONAL TRAILING STOP (PATIENT HARVEST)
-            # Only trails when trade is DEEP in profit (+2.0R+, e.g. +$4.00+ on Gold).
-            # Maintains a generous breathing buffer ($1.80 away from price) so normal
-            # market wiggles do NOT prematurely stop out winning trades!
+            # RULE 2: OPTIONAL ACTIVE TRAILING STOP (DISABLED BY DEFAULT PER USER REQUEST)
+            # Trailing is disabled by default to prevent choking trades on natural retracements.
+            # Holding Break-Even guarantees zero downside risk while allowing full TP target capture.
             # -------------------------------------------------------------
             min_trail_profit = 4.00 if ("XAU" in symbol or "BTC" in symbol) else 2.50
             trail_buffer = 1.80 if "XAU" in symbol else 1.00
             min_step = 0.50 if "XAU" in symbol else 0.25
 
-            if profit >= min_trail_profit and state.get("breakeven_set"):
+            if self.enable_trailing_stop and profit >= min_trail_profit and state.get("breakeven_set"):
                 last_trailed = state.get("last_trailed_sl", current_sl)
 
                 if side == "BUY":
