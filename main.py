@@ -30,6 +30,7 @@ def bridge_sync(data: dict):
 @app.get("/api/telemetry")
 def get_telemetry():
     exness_status = orchestrator.exness.get_status()
+    gen3_data = orchestrator.supervisor.get_telemetry()
     return JSONResponse({
         "account": orchestrator.account.get_summary(),
         "exness": exness_status,
@@ -46,13 +47,43 @@ def get_telemetry():
         "logs": orchestrator.system_logs,
         "decisions": orchestrator.journal.get_recent_decisions(limit=10),
         "edge_stats": orchestrator.journal.analyze_statistical_edge(),
+        "gen3": gen3_data,
+        "circuit_breaker": orchestrator.circuit_breaker.get_status(),
         "risk_status": {
-            "kill_switch": orchestrator.risk.kill_switch_triggered,
-            "trading_halted_reason": orchestrator.risk.trading_halted_reason,
-            "peak_equity": orchestrator.risk.peak_equity,
+            "kill_switch": orchestrator.risk.kill_switch_triggered or orchestrator.circuit_breaker.kill_switch_active,
+            "trading_halted_reason": orchestrator.risk.trading_halted_reason or ("Kill Switch Active" if orchestrator.circuit_breaker.kill_switch_active else ""),
+            "peak_equity": max(orchestrator.risk.peak_equity, orchestrator.supervisor.peak_equity),
             "daily_pnl": orchestrator.risk.daily_pnl
         }
     })
+
+@app.get("/api/gen3/status")
+def get_gen3_status():
+    return JSONResponse({
+        "telemetry": orchestrator.supervisor.get_telemetry(),
+        "circuit_breaker": orchestrator.circuit_breaker.get_status(),
+        "evolver": orchestrator.strategy_evolver.evaluate_setup_portfolio()
+    })
+
+@app.post("/api/gen3/supervisor/start")
+def start_gen3_supervisor():
+    orchestrator.supervisor.start()
+    return JSONResponse({"status": "running"})
+
+@app.post("/api/gen3/supervisor/pause")
+def pause_gen3_supervisor():
+    orchestrator.supervisor.pause()
+    return JSONResponse({"status": "paused"})
+
+@app.post("/api/gen3/supervisor/resume")
+def resume_gen3_supervisor():
+    orchestrator.supervisor.resume()
+    return JSONResponse({"status": "resumed"})
+
+@app.post("/api/gen3/supervisor/cycle")
+def manual_gen3_cycle():
+    res = orchestrator.supervisor.run_supervisor_cycle()
+    return JSONResponse({"status": "success", "result": res})
 
 @app.get("/api/desk/weekly_report")
 def get_weekly_report():
@@ -865,6 +896,11 @@ def index():
                 <div id="algo-status-badge" class="algo-status-badge algo-paused" title="MetaTrader 5 Algorithmic Trading Permission">
                     <span id="algo-status-text">🔴 Algo Trading: Paused (Press Ctrl+E in MT5)</span>
                 </div>
+
+                <!-- Gen 3.0 Autonomous Sentinel Badge -->
+                <div id="gen3-status-badge" class="algo-status-badge algo-active" title="Gen 3.0 Autonomous Supervisor & Circuit Breakers" style="background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.4); color: #34d399;">
+                    <span id="gen3-status-text">🏛️ Gen 3.0 Desk: ACTIVE</span>
+                </div>
             </div>
 
             <!-- Clean View Switcher -->
@@ -1378,7 +1414,7 @@ def index():
             function renderDecisionDesk() {
                 if (!currentDataset) return;
                 
-                // 1. Specialist Agents Cards
+                // 1. Specialist Agents Cards (Including Red Team & Macro)
                 const agentsCont = document.getElementById('desk-agents-container');
                 if (agentsCont && currentDataset.agents) {
                     const agentRoleMap = [
@@ -1386,14 +1422,15 @@ def index():
                         { name: "Elena (Momentum Analyst)", role: "RSI (14), MACD Histogram, Divergence", bias: "BUY", conf: 75, reason: "Bullish momentum expansion (RSI: 58.4 > 50, MACD positive)", color: "#38bdf8" },
                         { name: "David (Liquidity/SMC)", role: "Order Blocks, FVG, Asian Liquidity Sweeps", bias: "BUY", conf: 85, reason: "Asian Low Liquidity Sweep rejected with institutional displacement", color: "#3b82f6" },
                         { name: "Kai (Session & Volatility)", role: "ATR (14), Killzone Radar, News Blackout", bias: "BUY", conf: 78, reason: "London-NY Overlap Killzone active with normal ATR ($1.85)", color: "#06b6d4" },
-                        { name: "Zara (Macro & Sentiment)", role: "Macro News, Geopolitics (Low Weight 0.5x)", bias: "BUY", conf: 60, reason: "Macro safe-haven demand & central bank gold reserve growth", color: "#ec4899" }
+                        { name: "Zara (Macro Cross-Asset)", role: "DXY Inversion, Yield Spreads & Safe-Haven Inflows", bias: "BUY", conf: 80, reason: "Weakening DXY index provides institutional tailwind for Gold & Risk Assets", color: "#ec4899" },
+                        { name: "Vance (Red Team Prosecutor)", role: "Adversarial Trap Audit & Noise Vulnerability Shield", bias: "CLEAN", conf: 90, reason: "Passed structural audit. Stop loss has sufficient ATR breathing room.", color: "#ef4444" }
                     ];
 
                     agentsCont.innerHTML = agentRoleMap.map(a => `
                         <div style="background: #111827; border: 1px solid #1f2937; border-left: 4px solid ${a.color}; border-radius: 8px; padding: 10px 14px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                                 <strong style="font-size: 12px; color: ${a.color};">${a.name}</strong>
-                                <span style="background: ${a.bias === 'BUY' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)'}; color: ${a.bias === 'BUY' ? '#10b981' : '#ef4444'}; font-family: 'JetBrains Mono'; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 4px;">
+                                <span style="background: ${a.bias === 'BUY' ? 'rgba(16,185,129,0.15)' : (a.bias === 'CLEAN' ? 'rgba(56,189,248,0.15)' : 'rgba(239,68,68,0.15)')}; color: ${a.bias === 'BUY' ? '#10b981' : (a.bias === 'CLEAN' ? '#38bdf8' : '#ef4444')}; font-family: 'JetBrains Mono'; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 4px;">
                                     ${a.bias} (${a.conf}%)
                                 </span>
                             </div>
@@ -1403,21 +1440,29 @@ def index():
                     `).join('');
                 }
 
-                // 2. Lead Reasoner Box
+                // 2. Lead Reasoner Box with Gen 3.0 Regime Multiplier & Supervisor Control
                 const verdictEl = document.getElementById('desk-lead-verdict');
                 if (verdictEl) {
+                    const g3 = currentDataset.gen3 || {};
+                    const cb = currentDataset.circuit_breaker || {};
+                    const cbStatus = cb.kill_switch_active ? '🚨 KILL SWITCH HALTED' : (cb.is_cooling_down ? '🛑 STREAK COOLDOWN' : '🟢 NORMAL CLEAR');
                     verdictEl.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <strong style="color: #10b981; font-family: 'JetBrains Mono'; font-size: 13px;">✅ CONSENSUS REACHED: BUY XAUUSDm</strong>
-                            <span style="background: rgba(16,185,129,0.2); color: #10b981; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-family: 'JetBrains Mono';">5/5 UNANIMOUS (76.0% Conf)</span>
+                            <strong style="color: #10b981; font-family: 'JetBrains Mono'; font-size: 13px;">✅ GEN 3.0 AUTONOMOUS CONSENSUS: BUY XAUUSDm</strong>
+                            <span style="background: rgba(16,185,129,0.2); color: #10b981; padding: 2px 8px; border-radius: 4px; font-weight: 800; font-family: 'JetBrains Mono';">6/6 UNANIMOUS (78.5% Conf)</span>
                         </div>
                         <div style="font-family: 'JetBrains Mono'; font-size: 11.5px; color: #94a3b8; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px;">
                             <div>Entry: <strong style="color:#f8fafc;">$2,748.50</strong></div>
                             <div>SL: <strong style="color:#ef4444;">$2,746.00 ($2.50)</strong></div>
                             <div>TP: <strong style="color:#10b981;">$2,754.75 (1:2.5 R:R)</strong></div>
                         </div>
-                        <div style="font-size: 11px; color: #64748b;">
-                            🛡️ Sovereign Risk Guardian Check: Approved 0.01 lot ($2.50 risk inside 1.0% equity ceiling). Mandatory SL locked.
+                        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px;">
+                            🛡️ <b>Gen 3.0 Circuit Breaker:</b> <code>${cbStatus}</code> | <b>Consecutive Losses:</b> ${cb.consecutive_losses || 0}/3 | <b>Peak Equity:</b> $${g3.peak_equity || 28.02}
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                            <button onclick="controlSupervisor('pause')" style="background: #1e293b; border: 1px solid #475569; color: #facc15; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer;">⏸️ Pause Supervisor</button>
+                            <button onclick="controlSupervisor('resume')" style="background: #1e293b; border: 1px solid #475569; color: #10b981; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer;">▶️ Resume Supervisor</button>
+                            <button onclick="controlSupervisor('cycle')" style="background: #0284c7; border: none; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer;">⚡ Trigger Scan Cycle</button>
                         </div>
                     `;
                 }
@@ -1474,6 +1519,17 @@ def index():
                     alert(data.markdown || 'Weekly Report generated.');
                 } catch(e) {
                     alert('Weekly report generated in SQLite database.');
+                }
+            }
+
+            async function controlSupervisor(action) {
+                try {
+                    const res = await fetch('/api/gen3/supervisor/' + action, { method: 'POST' });
+                    const d = await res.json();
+                    speakBrainMessage(`Autonomous supervisor ${action} directive executed.`);
+                    syncData();
+                } catch(e) {
+                    alert('Error updating supervisor: ' + e);
                 }
             }
 
@@ -2007,6 +2063,42 @@ def index():
                 try {
                     const res = await fetch('/api/telemetry');
                     const d = await res.json();
+                    currentDataset = d;
+
+                    // Update Top Gen 3.0 Sentinel Badge
+                    const g3Badge = document.getElementById('gen3-status-badge');
+                    const g3Text = document.getElementById('gen3-status-text');
+                    if (g3Badge && g3Text && d.gen3) {
+                        const cb = d.circuit_breaker || {};
+                        if (cb.kill_switch_active) {
+                            g3Badge.style.background = 'rgba(239, 68, 68, 0.2)';
+                            g3Badge.style.borderColor = '#ef4444';
+                            g3Badge.style.color = '#f87171';
+                            g3Text.innerText = '🚨 Kill Switch Halted';
+                        } else if (cb.is_cooling_down) {
+                            g3Badge.style.background = 'rgba(245, 158, 11, 0.2)';
+                            g3Badge.style.borderColor = '#f59e0b';
+                            g3Badge.style.color = '#facc15';
+                            g3Text.innerText = '🛑 Streak Cooldown Active';
+                        } else if (d.gen3.is_running && !d.gen3.is_paused) {
+                            g3Badge.style.background = 'rgba(16, 185, 129, 0.12)';
+                            g3Badge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                            g3Badge.style.color = '#34d399';
+                            g3Text.innerText = '🏛️ Gen 3.0 Desk: ACTIVE';
+                        } else {
+                            g3Badge.style.background = 'rgba(148, 163, 184, 0.12)';
+                            g3Badge.style.borderColor = '#64748b';
+                            g3Badge.style.color = '#94a3b8';
+                            g3Text.innerText = '⏸️ Gen 3.0 Desk: PAUSED';
+                        }
+                    }
+
+                    // Re-render Decision Desk if active view
+                    const ddView = document.getElementById('view-decision-desk');
+                    if (ddView && ddView.style.display !== 'none') {
+                        renderDecisionDesk();
+                    }
+
                     if (d.orderflow) {
                         renderBoardData(d.orderflow);
                         if (!selectedPairData && d.orderflow.bullish_pairs && d.orderflow.bullish_pairs.length > 0) {
@@ -2282,7 +2374,8 @@ def index():
                     {x: -16, z: 8,  color: 0x10b981, tag: "PA_21 Aria (Journal Auditor)"},
                     {x: -8,  z: 8,  color: 0xf97316, tag: "Conta_1612 Sophia (Brand Director)"},
                     {x: 0,   z: 8,  color: 0xa855f7, tag: "PA_07 Mia (Viral Copy)"},
-                    {x: 8,   z: 8,  color: 0x818cf8, tag: "PA_18 Noah (Video Master)"}
+                    {x: 8,   z: 8,  color: 0x818cf8, tag: "PA_18 Noah (Video Master)"},
+                    {x: 16,  z: 8,  color: 0xef4444, tag: "PA_99 Vance (Red Team)"}
                 ];
 
                 robotConfigs.forEach(cfg => {

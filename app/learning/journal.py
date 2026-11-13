@@ -122,6 +122,24 @@ class TradeJournal:
                 results.append(item)
             return results
 
+    def get_recent_trades(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Returns the most recent closed trades from SQLite."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            query = """
+            SELECT t.ticket, t.symbol, t.side, t.volume, t.entry_price, t.close_price,
+                   t.profit, t.realized_r, t.status, d.trigger_reason as setup_name,
+                   t.open_time, t.close_time
+            FROM trades t
+            LEFT JOIN decisions d ON t.decision_id = d.id
+            WHERE t.status != 'OPEN' AND t.close_time IS NOT NULL
+            ORDER BY t.open_time DESC
+            LIMIT ?
+            """
+            cursor.execute(query, (limit,))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+
     def analyze_statistical_edge(self, min_sample_size: int = 30) -> Dict[str, Any]:
         """
         Analyzes edge across recorded trades:

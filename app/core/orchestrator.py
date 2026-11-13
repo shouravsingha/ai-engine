@@ -26,7 +26,11 @@ from app.core.telegram_bot import TelegramSentinelBot
 from app.data.db_manager import DatabaseManager
 from app.data.data_collector import DataCollector
 from app.learning.journal import TradeJournal
+from app.learning.strategy_evolver import StrategyEvolver
+from app.trading.circuit_breaker import AutonomousCircuitBreaker
+from app.trading.portfolio_engine import SovereignPortfolioEngine
 from app.agents.decision_desk import DecisionDesk
+from app.core.autonomous_supervisor import AutonomousFloorSupervisor
 
 class MasterOrchestrator:
     def __init__(self):
@@ -50,11 +54,26 @@ class MasterOrchestrator:
         self.branding = BrandingEngine()
         self.webhooks = SocialWebhookDispatcher()
 
-        # Human-Like Trading Desk & Institutional Learning Layer
+        # Generation 3.0: Sovereign Trading Desk, Portfolio & Institutional Learning Layer
         self.db_manager = DatabaseManager()
         self.data_collector = DataCollector(db=self.db_manager)
         self.journal = TradeJournal(db=self.db_manager)
-        self.decision_desk = DecisionDesk(risk_manager=self.risk, journal=self.journal)
+        self.circuit_breaker = AutonomousCircuitBreaker()
+        self.portfolio_engine = SovereignPortfolioEngine()
+        self.strategy_evolver = StrategyEvolver(journal=self.journal)
+        self.decision_desk = DecisionDesk(
+            risk_manager=self.risk,
+            journal=self.journal,
+            circuit_breaker=self.circuit_breaker,
+            portfolio_engine=self.portfolio_engine,
+            strategy_evolver=self.strategy_evolver
+        )
+        self.supervisor = AutonomousFloorSupervisor(
+            orchestrator=self,
+            decision_desk=self.decision_desk,
+            circuit_breaker=self.circuit_breaker,
+            strategy_evolver=self.strategy_evolver
+        )
         
         # Telegram Sentinel Bot
         self.telegram = TelegramSentinelBot(
@@ -63,7 +82,7 @@ class MasterOrchestrator:
             command_handler=self.handle_telegram_command
         )
 
-        # 10 Robot Specialist Workforce (Workforce 2.0 Masterplan)
+        # 10 Robot Specialist Workforce (Workforce 2.0 & Gen 3.0 Floor)
         self.agents = [
             {"id": "PA_01", "name": "Alex", "role": "Chief Quant (Trend)", "tag": "PA_01", "dept": "Trading", "status": "Brain Synced", "color": "#facc15"},
             {"id": "LUC_3", "name": "David", "role": "Fibonacci Master", "tag": "LUC_3", "dept": "Trading", "status": "0.618 OTE Armed", "color": "#3b82f6"},
@@ -76,6 +95,7 @@ class MasterOrchestrator:
             {"id": "PA_07", "name": "Mia", "role": "Viral Copywriter", "tag": "PA_07", "dept": "Media", "status": "Drafting Thread", "color": "#a855f7"},
             {"id": "PA_18", "name": "Noah", "role": "Reels & Script Master", "tag": "PA_18", "dept": "Media", "status": "Hook Testing", "color": "#818cf8"}
         ]
+        self.red_team_officer = {"id": "PA_99", "name": "Vance", "role": "Red Team Prosecutor", "tag": "PA_99", "dept": "Audit", "status": "Adversarial Shield", "color": "#ef4444"}
         
         self.agent_messages: List[Dict[str, Any]] = []
         self.system_logs: List[str] = []
@@ -101,6 +121,42 @@ class MasterOrchestrator:
         elif "/edge" in cmd:
             stats = self.journal.analyze_statistical_edge()
             return f"🧪 <b>Statistical Edge Audit:</b>\nTotal Trades: {stats['total_trades']}\nWin Rate: {stats['win_rate']}%\nAvg R: {stats['avg_r']}R\nProfit Factor: {stats['profit_factor']}\nValidated Setups: {len(stats['statistically_validated_setups'])}"
+        elif "/gen3" in cmd:
+            t = self.supervisor.get_telemetry()
+            cb = t["circuit_breaker"]
+            cb_str = "HALTED" if cb["kill_switch_active"] else ("COOLDOWN" if cb["is_cooling_down"] else "NORMAL")
+            return (
+                f"🏛️ <b>GEN 3.0 SOVEREIGN SUPERVISOR:</b>\n"
+                f"Status: {'ACTIVE' if t['is_running'] and not t['is_paused'] else ('PAUSED' if t['is_paused'] else 'STANDBY')}\n"
+                f"Cycles Executed: {t['cycle_count']}\n"
+                f"Peak Equity: ${t['peak_equity']:,.2f}\n"
+                f"Circuit Breaker: {cb_str} (Streak: {cb['consecutive_losses']} losses)\n"
+                f"Quarantined Setups: {len(t['quarantined_setups'])}\n"
+                f"Active Signals: {len(t['active_signals'])}"
+            )
+        elif "/prosecutor" in cmd:
+            latest_decision = self.journal.get_recent_decisions(limit=1)
+            if not latest_decision:
+                return "🛡️ <b>Red Team Prosecutor:</b> Armed & monitoring. No trade proposals audited yet."
+            d = latest_decision[0]
+            rt = d.get("agent_votes", {}).get("red_team", {})
+            status = rt.get("prosecutor_status", "AUDITED")
+            score = rt.get("risk_score", 0.0)
+            critique = "; ".join(rt.get("critique", ["Clean structural invalidation."]))
+            return f"🛡️ <b>Red Team Prosecutor (PA_99 Vance):</b>\nStatus: {status} (Risk Score: {score}/100)\nTarget: {d['symbol']} ({d['consensus_bias']})\nCritique: {critique}"
+        elif "/evolver" in cmd:
+            ev = self.strategy_evolver.evaluate_setup_portfolio()
+            q_count = ev["quarantined_setups_count"]
+            rankings = ev.get("setup_rankings", {})
+            top_setups = [f"• {k}: {v['win_rate_pct']}% win, {v['avg_r']}R (Sharpe {v['sharpe_ratio']})" for k, v in list(rankings.items())[:3]]
+            rank_str = "\n".join(top_setups) if top_setups else "No closed trades sampled yet."
+            return f"🧬 <b>Strategy Evolver Matrix:</b>\nTrades Analyzed: {ev['total_trades_analyzed']}\nQuarantined Setups: {q_count}\nTop Setups:\n{rank_str}"
+        elif "/pause" in cmd:
+            self.supervisor.pause()
+            return "⏸️ Autonomous Supervisor PAUSED. Live market monitoring continues without order dispatch."
+        elif "/resume" in cmd:
+            self.supervisor.resume()
+            return "▶️ Autonomous Supervisor RESUMED. Multi-agent debate & trade execution active."
         elif "/brain" in cmd:
             b = self.brain.get_status()
             return f"🧠 <b>AI Central Brain Diagnostics:</b>\nCognitive Load: {b['cognitive_load']}\nDecisions Audited: {b['metrics']['decisions_audited']}\nMistakes Prevented: {b['metrics']['mistakes_prevented']}\nSystem IQ: {b['metrics']['system_iq']}"
@@ -432,6 +488,21 @@ class MasterOrchestrator:
             pnl = ct.get('realized_pnl', 0.0)
             self.log(f"🔔 TRADE SETTLED: {ct['id']} | Outcome: {ct['status']} | PnL: ${pnl:+,.2f} | 15m Cooldown Armed for {sym}")
             self.brain.record_trade_result(pnl)
+            self.circuit_breaker.record_trade_outcome(pnl)
+            # Strategy Evolver Forensic Dissection
+            risk_amt = max(abs(ct.get('dollar_risk', 1.0)), 0.1)
+            r_mult = round(pnl / risk_amt, 2)
+            self.strategy_evolver.generate_trade_post_mortem(
+                trade_id=ct.get('id', 0),
+                symbol=sym,
+                side=ct.get('side', 'BUY'),
+                entry=ct.get('entry_price', 0.0),
+                sl=ct.get('sl', 0.0),
+                tp=ct.get('tp', 0.0),
+                exit_price=active_p,
+                pnl=pnl,
+                r_multiple=r_mult
+            )
             self.telegram.send_trade_close(ct, self.exness.balance)
             self.branding.generate_firm_content("BULLISH", f"${active_p:,.2f}", ct)
 
@@ -488,10 +559,13 @@ class MasterOrchestrator:
         if self.is_running:
             return
         self.is_running = True
-        self.log("AI Central Neural Brain, Smooth OrderFlow, 3D Office & Telegram Sentinel Live.")
+        self.log("AI Central Neural Brain, Gen 3.0 Autonomous Supervisor & Telegram Sentinel Live.")
+
+        # Start Gen 3.0 Autonomous Floor Supervisor
+        self.supervisor.start()
 
         self.telegram.start_polling()
-        self.telegram.send_message("🧠 <b>AI Central Neural Brain Active</b>\nMonitoring 7 Robot Employees.\nExness MT5 Account #434353249 auto-hedged.")
+        self.telegram.send_message("🧠 <b>Gen 3.0 Autonomous Trading Floor Active</b>\nMonitoring 11 Specialist Robot Employees.\nExness MT5 Sovereign Risk Shield engaged.")
 
         # Workforce announcements
         self.send_agent_message("AI Brain", "Neural Overseer", "🧠 Central Neural Brain calibrated. Actively mentoring all 7 robot employees.")
