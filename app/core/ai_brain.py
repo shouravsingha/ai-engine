@@ -35,6 +35,8 @@ class AIBrainOverseer:
             "risk_free_mode": "BREAKEVEN_RUN_TO_TP"
         }
         self.enable_trailing_stop = False # User directive: Don't choke trades with trailing; lock Break-Even for a 100% risk-free trade and let it run to TP
+        self.enable_emergency_close = False # User directive: Trade entry holei jeno wait kore (Do NOT auto-close running trades on minor pullback; let the trade wait and run with its Stop Loss)
+        self.emergency_loss_limit = -1.25
         self.managed_positions_state: Dict[int, Dict[str, Any]] = {}
 
     def audit_trade_proposal(self, agent_name: str, symbol: str, side: str, rrr: float, risk_pct: float, dollar_risk: float = 0.0, balance: float = 50000.0, time_machine_audit: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -154,11 +156,12 @@ class AIBrainOverseer:
             trade_duration_mins = (now - state["open_time"]).total_seconds() / 60.0
 
             # -------------------------------------------------------------
-            # RULE 0: EMERGENCY HARD LOSS CIRCUIT BREAKER (MAX DOLLAR DRAWDOWN DEFENSE)
-            # If a single trade's floating loss reaches -$1.25 (or broker stop level),
-            # FORCE CLOSE IMMEDIATELY! Never allow a trade to reach broker margin call.
+            # RULE 0: EMERGENCY HARD LOSS CIRCUIT BREAKER (DISABLED BY DEFAULT)
+            # Default behavior is PATIENT HOLD: When a trade enters, it is protected
+            # by its registered broker Stop Loss. The bot MUST wait and give the trade
+            # room to play out. Never prematurely force-close trades on minor -$1.25 pullbacks!
             # -------------------------------------------------------------
-            if profit <= -1.25:
+            if self.enable_emergency_close and profit <= self.emergency_loss_limit:
                 actions.append({
                     "action": "close_position",
                     "ticket": ticket,

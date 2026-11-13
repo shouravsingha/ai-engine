@@ -325,12 +325,12 @@ class MasterOrchestrator:
                 # Prevents 0.01 lot loss from ever exceeding the allowable dollar risk ceiling
                 bal = self.exness.balance
                 if bal < 50.0:
-                    # Micro tier: Gold max $1.00 distance ($1.00 risk), BTC max $80 ($0.80 risk), ETH max $25 ($0.25 risk)
-                    max_sl_dist = 80.0 if "BTC" in symbol_exec else (1.0 if "XAU" in symbol_exec else 25.0)
+                    # Micro tier: Gold max $2.00 distance ($2.00 risk), BTC max $80 ($0.80 risk), ETH max $25 ($0.25 risk)
+                    max_sl_dist = 80.0 if "BTC" in symbol_exec else (2.0 if "XAU" in symbol_exec else 25.0)
                 elif bal < 200.0:
                     max_sl_dist = 160.0 if "BTC" in symbol_exec else (3.0 if "XAU" in symbol_exec else 45.0)
                 else:
-                    max_sl_dist = 350.0 if "BTC" in symbol_exec else (10.0 if "XAU" in symbol_exec else 60.0)
+                    max_sl_dist = 350.0 if "BTC" in symbol_exec else (3.5 if "XAU" in symbol_exec else 60.0)
 
                 # -------------------------------------------------------------
                 # 0. PRIORITY FOR GOLD: DEDICATED INSTITUTIONAL SETUP (Asian Sweep / Overlap ORB / Trend Reclaim)
@@ -351,16 +351,17 @@ class MasterOrchestrator:
                 elif trend_4h == "BULLISH" and trend_1h == "BULLISH" and "DISCOUNT" in zone_status and mtf_aligned:
                     trade_side = "BUY"
                     raw_sl = float(smc_1h.get("recommended_sl", smc_1h["swing_low"]))
-                    # Enforce that SL is below entry for BUY
-                    if raw_sl >= entry or (entry - raw_sl) < (current_price * 0.001):
-                        raw_sl = entry - (current_price * 0.004)
+                    # Enforce that SL is below entry for BUY with calibrated fallback
+                    if raw_sl >= entry or (entry - raw_sl) < 0.50:
+                        raw_sl = entry - (2.50 if "XAU" in symbol_exec else current_price * 0.004)
 
                     if (entry - raw_sl) > max_sl_dist:
                         sl = round(entry - max_sl_dist, 2)
                     else:
                         sl = round(raw_sl, 2)
 
-                    min_tp_dist = (entry - sl) * 2.6
+                    tp_mult = 2.4 if "XAU" in symbol_exec else 2.6
+                    min_tp_dist = (entry - sl) * tp_mult
                     raw_tp = float(smc_1h.get("recommended_tp", fib_res.get("target_ext_1", entry + min_tp_dist)))
                     tp = round(max(raw_tp, entry + min_tp_dist), 2)
 
@@ -373,17 +374,18 @@ class MasterOrchestrator:
                 elif trend_4h == "BEARISH" and trend_1h == "BEARISH" and "PREMIUM" in zone_status and mtf_aligned:
                     trade_side = "SELL"
                     raw_sl = float(smc_1h.get("recommended_sl", smc_1h["swing_high"]))
-                    # Enforce that SL is ABOVE entry for SELL
-                    if raw_sl <= entry or (raw_sl - entry) < (current_price * 0.001):
-                        raw_sl = entry + (current_price * 0.004)
+                    # Enforce that SL is ABOVE entry for SELL with calibrated fallback
+                    if raw_sl <= entry or (raw_sl - entry) < 0.50:
+                        raw_sl = entry + (2.50 if "XAU" in symbol_exec else current_price * 0.004)
 
                     if (raw_sl - entry) > max_sl_dist:
                         sl = round(entry + max_sl_dist, 2)
                     else:
                         sl = round(raw_sl, 2)
 
-                    # Perfect Take Profit for SELL: minimum 2.6x the SL distance below entry
-                    min_tp_dist = (sl - entry) * 2.6
+                    # Perfect Take Profit for SELL: minimum 2.4x the SL distance below entry
+                    tp_mult = 2.4 if "XAU" in symbol_exec else 2.6
+                    min_tp_dist = (sl - entry) * tp_mult
                     raw_tp = float(smc_1h.get("recommended_tp", fib_res.get("target_ext_1", entry - min_tp_dist)))
                     tp = round(min(raw_tp, entry - min_tp_dist), 2)
 

@@ -121,10 +121,16 @@ class TestSystemIntegrity(unittest.TestCase):
             "tp": 2760.0,
             "profit": -1.35
         }]
+        # In patient hold mode (default), normal negative pullbacks must NOT close the trade!
         actions = self.brain.evaluate_open_positions(mock_positions, {})
-        self.assertEqual(len(actions), 1)
-        self.assertEqual(actions[0]["action"], "close_position")
-        self.assertIn("EMERGENCY CIRCUIT BREAKER", actions[0]["reason"])
+        self.assertEqual(len(actions), 0, "Trade must patiently wait and NOT be prematurely auto-closed on minor negative pullback!")
+
+        # When emergency circuit breaker is explicitly enabled, it auto-liquidates
+        self.brain.enable_emergency_close = True
+        actions_em = self.brain.evaluate_open_positions(mock_positions, {})
+        self.assertEqual(len(actions_em), 1)
+        self.assertEqual(actions_em[0]["action"], "close_position")
+        self.assertIn("EMERGENCY CIRCUIT BREAKER", actions_em[0]["reason"])
 
     def test_brain_patient_breakeven_shield(self):
         # 1. Micro-profit ($0.50) must NOT prematurely trigger Break-Even (give room to breathe)

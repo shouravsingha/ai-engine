@@ -237,8 +237,27 @@ def direct_execute(data: dict):
     symbol = data.get("symbol", "XAUUSDm")
     side = data.get("side", "BUY")
     price = float(data.get("price", 2748.20))
-    sl = price * 0.996 if side == "BUY" else price * 1.004
-    tp = price * 1.012 if side == "BUY" else price * 0.988
+    # Calibrated, realistic institutional SL/TP (Never use raw percentages that blow up Gold SL to $11+)
+    if "XAU" in symbol.upper() or "GOLD" in symbol.upper():
+        sl_dist = 2.50  # Tight Gold scalp SL ($2.50 / 25 pips)
+        tp_dist = 6.00  # Realistic day-trade TP ($6.00 / 60 pips, 2.4R)
+        sl = round(price - sl_dist, 2) if side == "BUY" else round(price + sl_dist, 2)
+        tp = round(price + tp_dist, 2) if side == "BUY" else round(price - tp_dist, 2)
+    elif "BTC" in symbol.upper():
+        sl_dist = 120.0
+        tp_dist = 300.0
+        sl = round(price - sl_dist, 2) if side == "BUY" else round(price + sl_dist, 2)
+        tp = round(price + tp_dist, 2) if side == "BUY" else round(price - tp_dist, 2)
+    elif "ETH" in symbol.upper():
+        sl_dist = 20.0
+        tp_dist = 50.0
+        sl = round(price - sl_dist, 2) if side == "BUY" else round(price + sl_dist, 2)
+        tp = round(price + tp_dist, 2) if side == "BUY" else round(price - tp_dist, 2)
+    else:
+        sl_dist = 0.0025
+        tp_dist = 0.0060
+        sl = round(price - sl_dist, 5) if side == "BUY" else round(price + sl_dist, 5)
+        tp = round(price + tp_dist, 5) if side == "BUY" else round(price - tp_dist, 5)
     
     if not (orchestrator.exness.live_terminal):
         cloud_command_queue.append({

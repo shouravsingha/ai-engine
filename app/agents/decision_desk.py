@@ -185,11 +185,19 @@ class DecisionDesk:
             inval = liquidity_out.get("invalidation_level") or trend_out.get("invalidation_level")
             sl = float(inval) if inval and inval < last_close else round(last_close - (market_metrics.get("atr_14", 1.5) * 1.5), 2)
             risk_dist = abs(last_close - sl)
+            # Cap Gold SL to realistic scalp/day-trade range ($1.50 min, $3.00 max)
+            if "XAU" in symbol.upper() or "GOLD" in symbol.upper():
+                risk_dist = max(1.50, min(risk_dist, 3.00))
+                sl = round(last_close - risk_dist, 2)
             tp = round(last_close + (risk_dist * adjusted_rrr), 2)
         elif consensus_bias == "SELL":
             inval = liquidity_out.get("invalidation_level") or trend_out.get("invalidation_level")
             sl = float(inval) if inval and inval > last_close else round(last_close + (market_metrics.get("atr_14", 1.5) * 1.5), 2)
             risk_dist = abs(sl - last_close)
+            # Cap Gold SL to realistic scalp/day-trade range ($1.50 min, $3.00 max)
+            if "XAU" in symbol.upper() or "GOLD" in symbol.upper():
+                risk_dist = max(1.50, min(risk_dist, 3.00))
+                sl = round(last_close + risk_dist, 2)
             tp = round(last_close - (risk_dist * adjusted_rrr), 2)
         else:
             sl = 0.0
