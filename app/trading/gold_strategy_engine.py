@@ -396,3 +396,137 @@ class GoldStrategyEngine:
             "asian_range": asian_range,
             "setup": None
         }
+
+    def get_planned_setup_map(
+        self,
+        candles_1h: List[Dict[str, float]],
+        candles_15m: List[Dict[str, float]],
+        candles_5m: List[Dict[str, float]],
+        current_price: float,
+        current_dt: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """
+        Synthesizes the exact chart geometry and active plan that the bot is waiting for or executing.
+        Used by the live frontend chart to draw Asian Range, OTE Golden Pocket, and planned Entry/SL/TP lines.
+        """
+        asian_range = self.evaluate_asian_range(candles_15m, current_dt=current_dt)
+        a_high = asian_range.get("high", 0.0)
+        a_low = asian_range.get("low", 0.0)
+
+        # Fallback if asian range is empty or flat
+        if a_high <= 0.0 or a_low <= 0.0 or a_high == a_low:
+            if candles_15m:
+                highs = [c["high"] for c in candles_15m[:12]] if len(candles_15m) >= 12 else [c["high"] for c in candles_15m]
+                lows = [c["low"] for c in candles_15m[:12]] if len(candles_15m) >= 12 else [c["low"] for c in candles_15m]
+                a_high = max(highs)
+                a_low = min(lows)
+            else:
+                a_high = round(current_price + 4.50, 2)
+                a_low = round(current_price - 4.50, 2)
+
+        a_mid = round((a_high + a_low) / 2.0, 2)
+        span = max(a_high - a_low, 2.50)
+
+        # Calculate Fibonacci OTE levels
+        # Discount (for BUY):
+        ote_discount_62 = round(a_high - (span * 0.62), 2)
+        ote_discount_705 = round(a_high - (span * 0.705), 2) # Sweet spot
+        ote_discount_79 = round(a_high - (span * 0.79), 2)
+
+        # Premium (for SELL):
+        ote_premium_62 = round(a_low + (span * 0.62), 2)
+        ote_premium_705 = round(a_low + (span * 0.705), 2) # Sweet spot
+        ote_premium_79 = round(a_low + (span * 0.79), 2)
+
+        # Check if an actual setup is already triggered
+        s1 = self.check_setup_1_asian_sweep_ote(candles_15m, candles_5m, current_price, asian_range)
+        s2 = self.check_setup_2_overlap_orb(candles_5m, current_price, current_dt=current_dt)
+        s3 = self.check_setup_3_trend_reclaim(candles_1h, candles_15m, current_price)
+
+        if s1:
+            active_setup = s1
+            plan_name = "GOLD_SETUP_1_ASIAN_SWEEP_MSS"
+            display_title = "Setup 1: Asian Range Sweep + OTE Retest (ACTIVE)"
+            status = "TRIGGERED"
+            side = active_setup["side"]
+            entry = active_setup["entry"]
+            sl = active_setup["sl"]
+            tp = active_setup["tp"]
+            instruction = f"Active {side} triggered at ${entry:.2f}. SL at ${sl:.2f}, TP at ${tp:.2f}."
+        elif s2:
+            active_setup = s2
+            plan_name = "GOLD_SETUP_2_OVERLAP_ORB"
+            display_title = "Setup 2: London/NY Overlap 15m ORB Breakout (ACTIVE)"
+            status = "TRIGGERED"
+            side = active_setup["side"]
+            entry = active_setup["entry"]
+            sl = active_setup["sl"]
+            tp = active_setup["tp"]
+            instruction = f"Active {side} Breakout triggered at ${entry:.2f}. SL at ${sl:.2f}, TP at ${tp:.2f}."
+        elif s3:
+            active_setup = s3
+            plan_name = "GOLD_SETUP_3_EMA_RECLAIM"
+            display_title = "Setup 3: Trend Reclaim Pullback (ACTIVE)"
+            status = "TRIGGERED"
+            side = active_setup["side"]
+            entry = active_setup["entry"]
+            sl = active_setup["sl"]
+            tp = active_setup["tp"]
+            instruction = f"Active {side} EMA Reclaim at ${entry:.2f}. SL at ${sl:.2f}, TP at ${tp:.2f}."
+        else:
+            # Anticipatory / Planned Geometry based on current market auction
+            if current_price <= a_mid:
+                # Expecting Bullish Judas Sweep & OTE Discount Retest
+                plan_name = "GOLD_SETUP_1_ASIAN_SSL_SWEEP"
+                display_title = "Setup 1: Asian Low Liquidity Sweep & OTE 70.5% Discount"
+                side = "BUY"
+                status = "WAITING_FOR_SWEEP" if current_price > a_low else "WAITING_FOR_DISPLACEMENT"
+                entry = ote_discount_705
+                # Clamp SL distance to $2.50
+                sl = round(entry - 2.50, 2)
+                tp = round(entry + 6.00, 2)
+                instruction = f"Scanning Asian Low (${a_low:.2f}) for Sell-Side Liquidity (SSL) sweep. Watching for OTE Sweet Spot at ${ote_discount_705:.2f} to BUY."
+            else:
+                # Expecting Bearish Judas Sweep & OTE Premium Retest
+                plan_name = "GOLD_SETUP_1_ASIAN_BSL_SWEEP"
+                display_title = "Setup 1: Asian High Liquidity Sweep & OTE 70.5% Premium"
+                side = "SELL"
+                status = "WAITING_FOR_SWEEP" if current_price < a_high else "WAITING_FOR_DISPLACEMENT"
+                entry = ote_premium_705
+                sl = round(entry + 2.50, 2)
+                tp = round(entry - 6.00, 2)
+                instruction = f"Scanning Asian High (${a_high:.2f}) for Buy-Side Liquidity (BSL) sweep. Watching for OTE Sweet Spot at ${ote_premium_705:.2f} to SELL."
+
+        risk_dist = abs(entry - sl)
+        reward_dist = abs(tp - entry)
+        rrr = round(reward_dist / max(risk_dist, 0.01), 2)
+
+        return {
+            "setup_name": plan_name,
+            "display_title": display_title,
+            "status": status,
+            "side": side,
+            "current_price": round(current_price, 2),
+            "planned_entry": round(entry, 2),
+            "planned_sl": round(sl, 2),
+            "planned_tp": round(tp, 2),
+            "sl_distance": round(risk_dist, 2),
+            "tp_distance": round(reward_dist, 2),
+            "rrr": rrr,
+            "asian_range": {
+                "high": round(a_high, 2),
+                "low": round(a_low, 2),
+                "mid": round(a_mid, 2)
+            },
+            "ote_zone": {
+                "fib_62": ote_discount_62 if side == "BUY" else ote_premium_62,
+                "fib_705": ote_discount_705 if side == "BUY" else ote_premium_705,
+                "fib_79": ote_discount_79 if side == "BUY" else ote_premium_79
+            },
+            "liquidity_pools": {
+                "bsl": round(a_high + 0.40, 2),
+                "ssl": round(a_low - 0.40, 2)
+            },
+            "confluence": "Asian Range Sweep + 70.5% OTE Golden Pocket + Structural Invalidation",
+            "instruction": instruction
+        }

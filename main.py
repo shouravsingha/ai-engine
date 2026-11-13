@@ -287,6 +287,68 @@ def direct_execute(data: dict):
     
     return {"status": "success", "order": order, "mt5_execution": mt5_res}
 
+@app.get("/api/gold/chart")
+def get_gold_chart_feed(interval: str = "15m", limit: int = 60):
+    try:
+        binance_interval = "15m"
+        if interval in ("5m", "5M"):
+            binance_interval = "5m"
+        elif interval in ("1h", "1H"):
+            binance_interval = "1h"
+        elif interval in ("15m", "15M"):
+            binance_interval = "15m"
+            
+        candles_raw = orchestrator.market.get_candles("gold", interval=binance_interval, limit=limit)
+        candles_1h = orchestrator.market.get_candles("gold", interval="1h", limit=30)
+        candles_15m = orchestrator.market.get_candles("gold", interval="15m", limit=30)
+        candles_5m = orchestrator.market.get_candles("gold", interval="5m", limit=30)
+        
+        current_price = 2748.50
+        if candles_raw and len(candles_raw) > 0:
+            current_price = float(candles_raw[-1].get("close", 2748.50))
+            
+        # Synthesize real-time institutional setup geometry
+        setup_plan = orchestrator.gold_engine.get_planned_setup_map(
+            candles_1h, candles_15m, candles_5m, current_price
+        )
+        
+        import time
+        now_ts = int(time.time())
+        step_seconds = 300 if binance_interval == "5m" else (900 if binance_interval == "15m" else 3600)
+        
+        formatted_candles = []
+        start_ts = now_ts - (len(candles_raw) * step_seconds)
+        for i, c in enumerate(candles_raw):
+            c_time = c.get("time")
+            if not c_time:
+                c_time = start_ts + (i * step_seconds)
+            elif c_time > 10000000000:
+                c_time = int(c_time / 1000)
+            else:
+                c_time = int(c_time)
+                
+            formatted_candles.append({
+                "time": c_time,
+                "open": round(float(c["open"]), 2),
+                "high": round(float(c["high"]), 2),
+                "low": round(float(c["low"]), 2),
+                "close": round(float(c["close"]), 2),
+                "volume": round(float(c.get("volume", 15.0)), 2)
+            })
+            
+        return {
+            "status": "success",
+            "symbol": "XAUUSDm",
+            "asset_name": "Gold / US Dollar (Sovereign Desk)",
+            "interval": binance_interval,
+            "current_price": round(current_price, 2),
+            "candles": formatted_candles,
+            "setup_plan": setup_plan,
+            "active_orders": [p for p in orchestrator.exness.open_positions if "XAU" in p.get("symbol", "").upper()]
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return """
@@ -300,6 +362,8 @@ def index():
         <!-- Three.js + OrbitControls -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+        <!-- TradingView Lightweight Charts for Real-Time Institutional Gold Chart -->
+        <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
         <style>
             :root {
                 --of-bg: #eceef2;
@@ -1105,9 +1169,10 @@ def index():
 
             <!-- Clean View Switcher -->
             <div class="tab-switch">
-                <button class="tab-btn active" id="tab-btn-orderflow" onclick="switchView('orderflow')">🌊 OrderFlow Matrix</button>
+                <button class="tab-btn active" id="tab-btn-gold" onclick="switchView('gold')">🥇 Gold Setup Radar &amp; Live Chart</button>
+                <button class="tab-btn" id="tab-btn-orderflow" onclick="switchView('orderflow')">🌊 OrderFlow Matrix</button>
                 <button class="tab-btn" id="tab-btn-3d" onclick="switchView('3d')">🏢 3D Office Floor</button>
-                <button class="tab-btn" id="tab-btn-desk" onclick="switchView('decision_desk')">🏛️ Decision Desk & Journal</button>
+                <button class="tab-btn" id="tab-btn-desk" onclick="switchView('decision_desk')">🏛️ Decision Desk &amp; Journal</button>
             </div>
 
             <!-- PROMINENT LIVE EXNESS MT5 ACCOUNT WIDGET (Single Compact Institutional Badge) -->
@@ -1141,8 +1206,135 @@ def index():
             </div>
         </header>
 
+        <!-- VIEW 0: 🥇 100% PURE GOLD SPECIALIST LIVE CHART & SETUP RADAR -->
+        <div id="view-gold-radar" style="display: block; padding: 16px 24px; max-width: 1720px; margin: 0 auto;" class="view-motion">
+            <!-- Top Controls Bar -->
+            <div style="background: var(--of-card); border: 1px solid var(--of-border); border-radius: 14px; padding: 14px 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.15); flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    <span style="font-size: 26px;">🥇</span>
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <h2 style="margin: 0; font-size: 17px; font-weight: 800; color: #f8fafc; letter-spacing: 0.3px;">XAUUSDm · PURE GOLD SOVEREIGN RADAR</h2>
+                            <span style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.45); color: #f59e0b; font-family: 'JetBrains Mono'; font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 5px;">100% SPECIALIST DESK</span>
+                        </div>
+                        <div style="font-size: 11.5px; color: #94a3b8; margin-top: 3px;">
+                            Institutional Smart Money Concepts (SMC) · Live Real-Time Geometric Setup Visualizer
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Price & Timeframe Switcher -->
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    <div style="background: #0f172a; border: 1px solid #1e293b; padding: 6px 14px; border-radius: 8px; font-family: 'JetBrains Mono'; text-align: right;">
+                        <span style="font-size: 10px; color: #64748b; display: block;">LIVE SPOT GOLD</span>
+                        <strong id="gold-live-price" style="font-size: 18px; color: #facc15; font-weight: 900;">$2,748.50</strong>
+                    </div>
+
+                    <!-- Timeframe Pill -->
+                    <div class="of-pill-segment" style="display: flex; gap: 4px; background: #0f172a; padding: 3px; border-radius: 8px; border: 1px solid #1e293b;">
+                        <button class="gold-tf-btn" id="gold-tf-5m" onclick="setGoldTimeframe('5m')" style="background: transparent; border: none; color: #94a3b8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">5M</button>
+                        <button class="gold-tf-btn active" id="gold-tf-15m" onclick="setGoldTimeframe('15m')" style="background: #0284c7; border: none; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">15M</button>
+                        <button class="gold-tf-btn" id="gold-tf-1h" onclick="setGoldTimeframe('1h')" style="background: transparent; border: none; color: #94a3b8; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">1H</button>
+                    </div>
+
+                    <!-- Quick Trade Action Buttons -->
+                    <div style="display: flex; gap: 6px;">
+                        <button onclick="quickOpenTrade('XAUUSDm', 'BUY')" style="background: #10b981; border: none; color: #fff; font-weight: 800; font-size: 12px; padding: 8px 14px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(16,185,129,0.3);">
+                            ⚡ BUY Gold (0.01)
+                        </button>
+                        <button onclick="quickOpenTrade('XAUUSDm', 'SELL')" style="background: #ef4444; border: none; color: #fff; font-weight: 800; font-size: 12px; padding: 8px 14px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(239,68,68,0.3);">
+                            🔻 SELL Gold (0.01)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Setup Banner HUD (What the bot is planning & waiting for) -->
+            <div id="gold-setup-hud" style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95)); border: 1.5px solid rgba(245, 158, 11, 0.4); border-radius: 14px; padding: 14px 18px; margin-bottom: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 20px;">🎯</span>
+                        <div>
+                            <span style="font-size: 10.5px; color: #f59e0b; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">ACTIVE INSTITUTIONAL SETUP WAITING</span>
+                            <h3 id="hud-setup-title" style="margin: 0; font-size: 15px; font-weight: 800; color: #f8fafc;">Setup 1: Asian Low Liquidity Sweep + OTE 70.5% Discount</h3>
+                        </div>
+                    </div>
+                    <div id="hud-setup-status-badge" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-family: 'JetBrains Mono'; font-size: 11.5px; font-weight: 800; padding: 4px 10px; border-radius: 6px;">
+                        ⏳ WAITING FOR SWEEP &amp; OTE PULLBACK
+                    </div>
+                </div>
+
+                <!-- Explanation in Bengali & English -->
+                <div id="hud-setup-instruction" style="background: rgba(0,0,0,0.25); border-left: 3px solid #f59e0b; padding: 8px 12px; border-radius: 4px; font-size: 12px; color: #cbd5e1; margin-bottom: 12px; line-height: 1.5;">
+                    বাজার এশিয়ান লো ($2,740.00)-এর লিকুইডিটি সুইপ করার অপেক্ষায় আছে। সুইপ সম্পন্ন হলে এবং ৭০.৫% OTE ডিসকাউন্ট জোনে পুলব্যাক দিলে এআই বট স্বয়ংক্রিয়ভাবে বাই (BUY) নিবে।
+                </div>
+
+                <!-- Geometry Target Parameters Grid -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; font-family: 'JetBrains Mono'; font-size: 11px;">
+                    <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid #1f2937; padding: 8px 10px; border-radius: 8px;">
+                        <span style="color: #94a3b8; font-size: 10px; display: block;">🎯 PLANNED ENTRY</span>
+                        <strong id="hud-entry-price" style="color: #38bdf8; font-size: 14px;">$2,741.00</strong>
+                    </div>
+                    <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid #1f2937; padding: 8px 10px; border-radius: 8px;">
+                        <span style="color: #94a3b8; font-size: 10px; display: block;">🛑 INVALIDATION SL</span>
+                        <strong id="hud-sl-price" style="color: #ef4444; font-size: 14px;">$2,738.40 (-$2.60)</strong>
+                    </div>
+                    <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid #1f2937; padding: 8px 10px; border-radius: 8px;">
+                        <span style="color: #94a3b8; font-size: 10px; display: block;">💰 TARGET TP</span>
+                        <strong id="hud-tp-price" style="color: #10b981; font-size: 14px;">$2,750.00 (+$9.00)</strong>
+                    </div>
+                    <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid #1f2937; padding: 8px 10px; border-radius: 8px;">
+                        <span style="color: #94a3b8; font-size: 10px; display: block;">⚖️ RISK-REWARD</span>
+                        <strong id="hud-rrr" style="color: #facc15; font-size: 14px;">1 : 3.46 RRR</strong>
+                    </div>
+                    <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid #1f2937; padding: 8px 10px; border-radius: 8px;">
+                        <span style="color: #94a3b8; font-size: 10px; display: block;">🛡️ RISK POLICY</span>
+                        <strong style="color: #a855f7; font-size: 12.5px;">BE @ +$2.50 (Free Run)</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Central Real Live Chart Container with Legend -->
+            <div style="background: #0b0f19; border: 1px solid #1e293b; border-radius: 14px; padding: 14px; margin-bottom: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+                <!-- Chart Legend Strip -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; font-size: 11px; font-family: 'JetBrains Mono';">
+                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                        <span style="color: #f59e0b; display: flex; align-items: center; gap: 5px;">
+                            <span style="display: inline-block; width: 14px; height: 3px; background: #f59e0b; border-top: 1px dashed #f59e0b;"></span>
+                            Asian Range (BSL / SSL Pools)
+                        </span>
+                        <span style="color: #eab308; display: flex; align-items: center; gap: 5px;">
+                            <span style="display: inline-block; width: 14px; height: 8px; background: rgba(234, 179, 8, 0.25); border: 1px solid #eab308;"></span>
+                            OTE 70.5% Golden Pocket
+                        </span>
+                        <span style="color: #38bdf8; display: flex; align-items: center; gap: 5px;">
+                            <span style="display: inline-block; width: 14px; height: 3px; background: #38bdf8;"></span>
+                            Planned Entry
+                        </span>
+                        <span style="color: #ef4444; display: flex; align-items: center; gap: 5px;">
+                            <span style="display: inline-block; width: 14px; height: 3px; background: #ef4444; border-top: 1px dashed #ef4444;"></span>
+                            Structural SL ($2.50)
+                        </span>
+                        <span style="color: #10b981; display: flex; align-items: center; gap: 5px;">
+                            <span style="display: inline-block; width: 14px; height: 3px; background: #10b981; border-top: 1px dashed #10b981;"></span>
+                            Target TP (1:2.4+)
+                        </span>
+                    </div>
+                    <span id="chart-update-pulse" style="color: #10b981; font-weight: 700;">● LIVE TICK STREAM ACTIVE</span>
+                </div>
+
+                <!-- The Interactive Canvas Container -->
+                <div id="gold-tv-chart-container" style="width: 100%; height: 520px; position: relative; border-radius: 8px; overflow: hidden; background: #060911;">
+                    <!-- Fallback / Loading indicator -->
+                    <div id="gold-chart-loading" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #38bdf8; font-family: 'JetBrains Mono'; font-size: 13px;">
+                        ⏳ Loading Live Gold Spot Feed &amp; Institutional Geometry...
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- VIEW 1: 100% IDENTICAL ORDERFLOW MATRIX WINDOW (Matches new update.mp4) -->
-        <div id="view-orderflow">
+        <div id="view-orderflow" style="display: none;">
             <div class="of-window">
                 <!-- Mac-Style Window Header -->
                 <div class="of-window-head">
@@ -1508,7 +1700,11 @@ def index():
 
         <!-- Mobile Floating Bottom Touch Navigation Dock -->
         <nav class="mobile-bottom-nav">
-            <button class="mob-nav-btn active" id="mob-btn-orderflow" onclick="switchView('orderflow')">
+            <button class="mob-nav-btn active" id="mob-btn-gold" onclick="switchView('gold')">
+                <span class="mob-icon">🥇</span>
+                <span class="mob-label">Gold Radar</span>
+            </button>
+            <button class="mob-nav-btn" id="mob-btn-orderflow" onclick="switchView('orderflow')">
                 <span class="mob-icon">🌊</span>
                 <span class="mob-label">OrderFlow</span>
             </button>
@@ -1613,18 +1809,29 @@ def index():
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.mob-nav-btn').forEach(b => b.classList.remove('active'));
 
+                const goldView = document.getElementById('view-gold-radar');
                 const ofView = document.getElementById('view-orderflow');
                 const d3View = document.getElementById('view-3d-floor');
                 const ddView = document.getElementById('view-decision-desk');
 
-                [ofView, d3View, ddView].forEach(v => {
+                [goldView, ofView, d3View, ddView].forEach(v => {
                     if (v) {
                         v.classList.remove('view-motion');
                         v.style.display = 'none';
                     }
                 });
 
-                if (view === 'orderflow') {
+                if (view === 'gold') {
+                    if (goldView) { goldView.style.display = 'block'; goldView.classList.add('view-motion'); }
+                    const dt = document.getElementById('tab-btn-gold'); if (dt) dt.classList.add('active');
+                    const mb = document.getElementById('mob-btn-gold'); if (mb) mb.classList.add('active');
+                    if (goldChart) {
+                        setTimeout(() => {
+                            const cont = document.getElementById('gold-tv-chart-container');
+                            if (cont) goldChart.resize(cont.clientWidth, cont.clientHeight);
+                        }, 50);
+                    }
+                } else if (view === 'orderflow') {
                     if (ofView) { ofView.style.display = 'block'; ofView.classList.add('view-motion'); }
                     const dt = document.getElementById('tab-btn-orderflow'); if (dt) dt.classList.add('active');
                     const mb = document.getElementById('mob-btn-orderflow'); if (mb) mb.classList.add('active');
@@ -3112,7 +3319,214 @@ def index():
                 setTimeout(() => ripple.remove(), 480);
             }, { passive: true });
 
+            // --- 🥇 REAL-TIME GOLD LIVE CHART & INSTITUTIONAL SETUP VISUALIZER ---
+            let goldChart = null;
+            let goldCandleSeries = null;
+            let activePriceLines = [];
+            let currentGoldTimeframe = '15m';
+
+            function initGoldChart() {
+                const container = document.getElementById('gold-tv-chart-container');
+                if (!container) return;
+
+                if (typeof LightweightCharts !== 'undefined') {
+                    try {
+                        container.innerHTML = '';
+                        goldChart = LightweightCharts.createChart(container, {
+                            width: container.clientWidth,
+                            height: container.clientHeight,
+                            layout: {
+                                background: { color: '#070a12' },
+                                textColor: '#94a3b8',
+                                fontSize: 11,
+                                fontFamily: "'JetBrains Mono', monospace",
+                            },
+                            grid: {
+                                vertLines: { color: 'rgba(30, 41, 59, 0.45)' },
+                                horzLines: { color: 'rgba(30, 41, 59, 0.45)' },
+                            },
+                            crosshair: {
+                                mode: LightweightCharts.CrosshairMode.Normal,
+                            },
+                            rightPriceScale: {
+                                borderColor: '#1e293b',
+                                scaleMargins: { top: 0.15, bottom: 0.15 },
+                            },
+                            timeScale: {
+                                borderColor: '#1e293b',
+                                timeVisible: true,
+                                secondsVisible: false,
+                            },
+                        });
+
+                        goldCandleSeries = goldChart.addCandlestickSeries({
+                            upColor: '#10b981',
+                            downColor: '#ef4444',
+                            borderVisible: false,
+                            wickUpColor: '#34d399',
+                            wickDownColor: '#f87171',
+                        });
+                    } catch (e) {
+                        console.error("Lightweight charts init error:", e);
+                    }
+                }
+            }
+
+            function setGoldTimeframe(tf) {
+                document.querySelectorAll('.gold-tf-btn').forEach(b => b.classList.remove('active'));
+                const btn = document.getElementById('gold-tf-' + tf);
+                if (btn) btn.classList.add('active');
+                currentGoldTimeframe = tf;
+                updateGoldChartData();
+            }
+
+            async function updateGoldChartData() {
+                try {
+                    const res = await fetch(`/api/gold/chart?interval=${currentGoldTimeframe}`);
+                    const d = await res.json();
+                    if (d.status !== 'success') return;
+
+                    // Update Top Live Price Widget
+                    const pEl = document.getElementById('gold-live-price');
+                    if (pEl && d.current_price) {
+                        pEl.innerText = `$${Number(d.current_price).toFixed(2)}`;
+                    }
+
+                    // Update Setup HUD
+                    if (d.setup_plan) {
+                        const sp = d.setup_plan;
+                        const titleEl = document.getElementById('hud-setup-title');
+                        if (titleEl) titleEl.innerText = sp.display_title;
+
+                        const badgeEl = document.getElementById('hud-setup-status-badge');
+                        if (badgeEl) {
+                            if (sp.status === 'TRIGGERED') {
+                                badgeEl.style.background = 'rgba(16, 185, 129, 0.2)';
+                                badgeEl.style.borderColor = '#10b981';
+                                badgeEl.style.color = '#34d399';
+                                badgeEl.innerText = `⚡ ${sp.side} EXECUTED / ACTIVE`;
+                            } else {
+                                badgeEl.style.background = 'rgba(56, 189, 248, 0.15)';
+                                badgeEl.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+                                badgeEl.style.color = '#38bdf8';
+                                badgeEl.innerText = `⏳ ${sp.status.replace(/_/g, ' ')}`;
+                            }
+                        }
+
+                        const instrEl = document.getElementById('hud-setup-instruction');
+                        if (instrEl) instrEl.innerText = sp.instruction;
+
+                        const entryEl = document.getElementById('hud-entry-price');
+                        if (entryEl) entryEl.innerText = `$${Number(sp.planned_entry).toFixed(2)}`;
+
+                        const slEl = document.getElementById('hud-sl-price');
+                        if (slEl) slEl.innerText = `$${Number(sp.planned_sl).toFixed(2)} (-$${Number(sp.sl_distance).toFixed(2)})`;
+
+                        const tpEl = document.getElementById('hud-tp-price');
+                        if (tpEl) tpEl.innerText = `$${Number(sp.planned_tp).toFixed(2)} (+$${Number(sp.tp_distance).toFixed(2)})`;
+
+                        const rrrEl = document.getElementById('hud-rrr');
+                        if (rrrEl) rrrEl.innerText = `1 : ${sp.rrr} RRR`;
+                    }
+
+                    // Update Chart Data & Draw Setup Geometry Lines
+                    if (goldCandleSeries && d.candles && d.candles.length > 0) {
+                        goldCandleSeries.setData(d.candles);
+
+                        // Clear previously drawn setup lines
+                        activePriceLines.forEach(line => {
+                            try { goldCandleSeries.removePriceLine(line); } catch (e) {}
+                        });
+                        activePriceLines = [];
+
+                        // Draw Asian Range High & Low
+                        if (d.setup_plan && d.setup_plan.asian_range) {
+                            const ar = d.setup_plan.asian_range;
+                            if (ar.high > 0) {
+                                const lHigh = goldCandleSeries.createPriceLine({
+                                    price: ar.high,
+                                    color: '#f59e0b',
+                                    lineWidth: 2,
+                                    lineStyle: 1, // Dashed
+                                    axisLabelVisible: true,
+                                    title: 'ASIAN HIGH (BSL POOL)',
+                                });
+                                activePriceLines.push(lHigh);
+                            }
+                            if (ar.low > 0) {
+                                const lLow = goldCandleSeries.createPriceLine({
+                                    price: ar.low,
+                                    color: '#f59e0b',
+                                    lineWidth: 2,
+                                    lineStyle: 1, // Dashed
+                                    axisLabelVisible: true,
+                                    title: 'ASIAN LOW (SSL POOL)',
+                                });
+                                activePriceLines.push(lLow);
+                            }
+                        }
+
+                        // Draw OTE 70.5% Golden Pocket Sweet Spot
+                        if (d.setup_plan && d.setup_plan.ote_zone && d.setup_plan.ote_zone.fib_705 > 0) {
+                            const lOte = goldCandleSeries.createPriceLine({
+                                price: d.setup_plan.ote_zone.fib_705,
+                                color: '#eab308',
+                                lineWidth: 2,
+                                lineStyle: 0, // Solid
+                                axisLabelVisible: true,
+                                title: 'OTE 70.5% GOLDEN POCKET',
+                            });
+                            activePriceLines.push(lOte);
+                        }
+
+                        // Draw Planned Entry Price
+                        if (d.setup_plan && d.setup_plan.planned_entry > 0) {
+                            const lEntry = goldCandleSeries.createPriceLine({
+                                price: d.setup_plan.planned_entry,
+                                color: '#38bdf8',
+                                lineWidth: 2,
+                                lineStyle: 0, // Solid
+                                axisLabelVisible: true,
+                                title: `🎯 PLANNED ${d.setup_plan.side} @ $${Number(d.setup_plan.planned_entry).toFixed(2)}`,
+                            });
+                            activePriceLines.push(lEntry);
+                        }
+
+                        // Draw Planned Invalidation SL
+                        if (d.setup_plan && d.setup_plan.planned_sl > 0) {
+                            const lSl = goldCandleSeries.createPriceLine({
+                                price: d.setup_plan.planned_sl,
+                                color: '#ef4444',
+                                lineWidth: 2,
+                                lineStyle: 1, // Dashed
+                                axisLabelVisible: true,
+                                title: `🛑 SL: $${Number(d.setup_plan.planned_sl).toFixed(2)} (-$${d.setup_plan.sl_distance})`,
+                            });
+                            activePriceLines.push(lSl);
+                        }
+
+                        // Draw Planned Target TP
+                        if (d.setup_plan && d.setup_plan.planned_tp > 0) {
+                            const lTp = goldCandleSeries.createPriceLine({
+                                price: d.setup_plan.planned_tp,
+                                color: '#10b981',
+                                lineWidth: 2,
+                                lineStyle: 1, // Dashed
+                                axisLabelVisible: true,
+                                title: `💰 TP: $${Number(d.setup_plan.planned_tp).toFixed(2)} (+$${d.setup_plan.tp_distance} | ${d.setup_plan.rrr}R)`,
+                            });
+                            activePriceLines.push(lTp);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Gold chart update error:", e);
+                }
+            }
+
             window.onload = () => {
+                initGoldChart();
+                updateGoldChartData();
+                setInterval(updateGoldChartData, 2500);
                 renderDeltaHistogram();
                 initRiverParticles();
                 animateRiverLoop();
@@ -3123,6 +3537,10 @@ def index():
             };
 
             window.onresize = () => {
+                const goldCont = document.getElementById('gold-tv-chart-container');
+                if (goldChart && goldCont && goldCont.clientWidth > 0) {
+                    goldChart.resize(goldCont.clientWidth, goldCont.clientHeight);
+                }
                 const canvas = document.getElementById('sankey-river-canvas');
                 if (canvas) {
                     canvas.width = canvas.clientWidth * window.devicePixelRatio;

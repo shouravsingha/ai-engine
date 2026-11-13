@@ -52,7 +52,7 @@ class AutonomousFloorSupervisor:
         self.is_paused = False
         self._thread: Optional[threading.Thread] = None
 
-        self.symbols = ["XAUUSDm", "BTCUSDm", "EURUSDm", "GBPUSDm"]
+        self.symbols = ["XAUUSDm"] # 100% Pure Gold Specialist Mode
         self.peak_equity = 0.0
         self.last_cycle_time = 0.0
         self.cycle_count = 0

@@ -33,7 +33,7 @@ if MT5_AVAILABLE:
 class DataCollector:
     def __init__(self, db: Optional[DatabaseManager] = None):
         self.db = db or DatabaseManager()
-        self.watched_symbols = ["XAUUSDm", "BTCUSDm", "EURUSDm", "GBPUSDm"]
+        self.watched_symbols = ["XAUUSDm"] # 100% Pure Gold Specialist Mode
         self.timeframes = ["M1", "M5", "M15", "H1", "H4", "D1"]
         self.high_impact_news_window = 30  # minutes before and after high-impact news
 

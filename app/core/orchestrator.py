@@ -76,6 +76,7 @@ class MasterOrchestrator:
         )
         
         # Telegram Sentinel Bot
+        self.gold_specialist_mode = True # 100% Pure Gold Sovereign Desk: All agents and capital specialize exclusively on Gold (XAUUSDm)
         self.telegram = TelegramSentinelBot(
             token="8538360036:AAHvC5EJvrB2Srh5MRn7LghR1IEZpOxuV38",
             chat_id="5347514050",
@@ -229,7 +230,8 @@ class MasterOrchestrator:
         tickers = self.market.get_all_live_tickers()
 
         matrix = {}
-        for asset_key in ["gold", "btc", "eth"]:
+        target_assets = ["gold"] if getattr(self, "gold_specialist_mode", True) else ["gold", "btc", "eth"]
+        for asset_key in target_assets:
             symbol_exec = "XAUUSDm" if asset_key == "gold" else ("BTCUSDm" if asset_key == "btc" else "ETHUSDm")
             try:
                 ticker = tickers[asset_key]
@@ -482,7 +484,12 @@ class MasterOrchestrator:
         # Run AI Brain trade defense on open MT5 positions
         self.evaluate_and_defend_positions()
 
-        active_p = matrix["gold"]["price"] if any(t['symbol'] == 'XAUUSDm' for t in self.account.open_trades) else matrix["btc"]["price"]
+        if "gold" in matrix:
+            active_p = matrix["gold"]["price"]
+        elif "btc" in matrix:
+            active_p = matrix["btc"]["price"]
+        else:
+            active_p = 2748.50
         closed_trades = self.account.update_open_trades(active_p)
         for ct in closed_trades:
             sym = ct.get('symbol', 'XAUUSDm')
