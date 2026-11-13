@@ -876,9 +876,190 @@ def index():
                     flex-shrink: 0;
                 }
             }
+
+            /* --- INTERACTIVE CYBER CURSOR & MOUSE DYNAMICS --- */
+            :root {
+                --mouse-x: 50vw;
+                --mouse-y: 50vh;
+            }
+
+            body {
+                position: relative;
+            }
+
+            /* Dynamic Ambient Mouse Spotlight */
+            body::before {
+                content: '';
+                position: fixed;
+                top: 0; left: 0; width: 100vw; height: 100vh;
+                pointer-events: none;
+                z-index: 1;
+                background: radial-gradient(850px circle at var(--mouse-x) var(--mouse-y), rgba(56, 189, 248, 0.08), transparent 65%);
+                transition: opacity 0.3s ease;
+            }
+
+            #cyber-cursor-dot {
+                position: fixed;
+                top: 0; left: 0;
+                width: 7px; height: 7px;
+                border-radius: 50%;
+                background: #38bdf8;
+                box-shadow: 0 0 10px #38bdf8, 0 0 20px #0284c7;
+                pointer-events: none;
+                z-index: 999999;
+                transform: translate(-50%, -50%);
+                transition: transform 0.04s ease-out;
+            }
+
+            #cyber-cursor-aura {
+                position: fixed;
+                top: 0; left: 0;
+                width: 32px; height: 32px;
+                border-radius: 50%;
+                border: 1.5px solid rgba(56, 189, 248, 0.55);
+                box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
+                pointer-events: none;
+                z-index: 999998;
+                transform: translate(-50%, -50%);
+                transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1), height 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s, background 0.2s;
+            }
+
+            #cyber-cursor-aura.cursor-hover {
+                width: 52px; height: 52px;
+                border-color: rgba(56, 189, 248, 0.95);
+                background: rgba(56, 189, 248, 0.12);
+                box-shadow: 0 0 25px rgba(56, 189, 248, 0.45);
+            }
+
+            #cursor-trail-canvas {
+                position: fixed;
+                top: 0; left: 0;
+                width: 100vw; height: 100vh;
+                pointer-events: none;
+                z-index: 999990;
+            }
+
+            /* --- ANIMATION & MOTION FLOW SYSTEM --- */
+            @keyframes pulseGlow {
+                0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.5); }
+                70% { box-shadow: 0 0 0 8px rgba(56, 189, 248, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+            }
+
+            .tab-btn, .tile-unit, .dock-btn, .focus-card {
+                transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            .tile-unit:hover {
+                transform: translateY(-2px) scale(1.02);
+                box-shadow: 0 8px 24px rgba(2, 132, 199, 0.25);
+            }
+
+            .view-motion {
+                animation: viewSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+
+            @keyframes viewSlideIn {
+                from { opacity: 0; transform: translateY(14px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+
+            /* --- MOBILE BOTTOM TOUCH NAVIGATION DOCK --- */
+            .mobile-bottom-nav {
+                display: none;
+            }
+
+            @media (max-width: 900px) {
+                #floating-popover {
+                    z-index: 100000 !important;
+                }
+                .mobile-bottom-nav {
+                    display: flex;
+                    position: fixed;
+                    bottom: 0; left: 0; right: 0;
+                    height: 60px;
+                    background: rgba(11, 15, 25, 0.94);
+                    backdrop-filter: blur(16px);
+                    -webkit-backdrop-filter: blur(16px);
+                    border-top: 1px solid rgba(56, 189, 248, 0.2);
+                    z-index: 99990;
+                    justify-content: space-around;
+                    align-items: center;
+                    padding: 0 10px;
+                    box-shadow: 0 -8px 28px rgba(0,0,0,0.5);
+                }
+
+                .mob-nav-btn {
+                    background: transparent;
+                    border: none;
+                    color: #94a3b8;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 3px;
+                    font-size: 10px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    padding: 6px 12px;
+                    border-radius: 8px;
+                    transition: all 0.2s;
+                }
+
+                .mob-nav-btn .mob-icon {
+                    font-size: 18px;
+                }
+
+                .mob-nav-btn.active {
+                    color: #38bdf8;
+                    background: rgba(56, 189, 248, 0.12);
+                }
+
+                /* Add bottom padding to body so content isn't hidden behind mobile dock */
+                body {
+                    padding-bottom: 70px !important;
+                }
+
+                /* Collapse Decision Desk grid to 1 column on mobile */
+                #view-decision-desk > div[style*="grid-template-columns"] {
+                    grid-template-columns: 1fr !important;
+                    gap: 16px !important;
+                }
+
+                #view-decision-desk {
+                    padding: 14px 10px !important;
+                }
+
+                #view-decision-desk > div:first-child {
+                    flex-direction: column !important;
+                    align-items: flex-start !important;
+                    gap: 12px !important;
+                }
+
+                #view-decision-desk > div:first-child > div:last-child {
+                    flex-wrap: wrap !important;
+                    gap: 8px !important;
+                }
+
+                /* Hide desktop tabs when on small mobile screens */
+                .tab-switch {
+                    overflow-x: auto;
+                    max-width: 100%;
+                    -webkit-overflow-scrolling: touch;
+                }
+            }
+
+            @media (hover: none) and (pointer: coarse) {
+                #cyber-cursor-dot, #cyber-cursor-aura, #cursor-trail-canvas {
+                    display: none !important;
+                }
+            }
         </style>
     </head>
     <body class="theme-light">
+        <!-- Interactive Cyber-Cursor Follower & Particle Trail (Desktop Only) -->
+        <div id="cyber-cursor-dot"></div>
+        <div id="cyber-cursor-aura"></div>
+        <canvas id="cursor-trail-canvas"></canvas>
         <!-- TOP APP BAR -->
         <header class="top-nav-bar">
             <!-- Brand & Live Market Session with Real-Time Clock & MT5 Algo Status -->
@@ -905,9 +1086,9 @@ def index():
 
             <!-- Clean View Switcher -->
             <div class="tab-switch">
-                <button class="tab-btn active" onclick="switchView('orderflow')">🌊 OrderFlow Matrix</button>
-                <button class="tab-btn" onclick="switchView('3d')">🏢 3D Office Floor</button>
-                <button class="tab-btn" onclick="switchView('decision_desk')">🏛️ Decision Desk & Journal</button>
+                <button class="tab-btn active" id="tab-btn-orderflow" onclick="switchView('orderflow')">🌊 OrderFlow Matrix</button>
+                <button class="tab-btn" id="tab-btn-3d" onclick="switchView('3d')">🏢 3D Office Floor</button>
+                <button class="tab-btn" id="tab-btn-desk" onclick="switchView('decision_desk')">🏛️ Decision Desk & Journal</button>
             </div>
 
             <!-- PROMINENT LIVE EXNESS MT5 ACCOUNT WIDGET (Single Compact Institutional Badge) -->
@@ -1306,6 +1487,26 @@ def index():
             </div>
         </div>
 
+        <!-- Mobile Floating Bottom Touch Navigation Dock -->
+        <nav class="mobile-bottom-nav">
+            <button class="mob-nav-btn active" id="mob-btn-orderflow" onclick="switchView('orderflow')">
+                <span class="mob-icon">🌊</span>
+                <span class="mob-label">OrderFlow</span>
+            </button>
+            <button class="mob-nav-btn" id="mob-btn-3d" onclick="switchView('3d')">
+                <span class="mob-icon">🏢</span>
+                <span class="mob-label">3D Office</span>
+            </button>
+            <button class="mob-nav-btn" id="mob-btn-desk" onclick="switchView('decision_desk')">
+                <span class="mob-icon">🏛️</span>
+                <span class="mob-label">Prop Desk</span>
+            </button>
+            <button class="mob-nav-btn" onclick="quickOpenTrade('XAUUSDm', 'BUY')">
+                <span class="mob-icon">⚡</span>
+                <span class="mob-label">Quick Buy</span>
+            </button>
+        </nav>
+
         <script>
             let currentDataset = null;
             let selectedPairData = null;
@@ -1391,24 +1592,35 @@ def index():
 
             function switchView(view) {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.mob-nav-btn').forEach(b => b.classList.remove('active'));
+
+                const ofView = document.getElementById('view-orderflow');
+                const d3View = document.getElementById('view-3d-floor');
+                const ddView = document.getElementById('view-decision-desk');
+
+                [ofView, d3View, ddView].forEach(v => {
+                    if (v) {
+                        v.classList.remove('view-motion');
+                        v.style.display = 'none';
+                    }
+                });
+
                 if (view === 'orderflow') {
-                    document.getElementById('view-orderflow').style.display = 'block';
-                    document.getElementById('view-3d-floor').style.display = 'none';
-                    const dd = document.getElementById('view-decision-desk'); if (dd) dd.style.display = 'none';
-                    event.target.classList.add('active');
+                    if (ofView) { ofView.style.display = 'block'; ofView.classList.add('view-motion'); }
+                    const dt = document.getElementById('tab-btn-orderflow'); if (dt) dt.classList.add('active');
+                    const mb = document.getElementById('mob-btn-orderflow'); if (mb) mb.classList.add('active');
                 } else if (view === '3d') {
-                    document.getElementById('view-orderflow').style.display = 'none';
-                    document.getElementById('view-3d-floor').style.display = 'block';
-                    const dd = document.getElementById('view-decision-desk'); if (dd) dd.style.display = 'none';
-                    event.target.classList.add('active');
+                    if (d3View) { d3View.style.display = 'block'; d3View.classList.add('view-motion'); }
+                    const dt = document.getElementById('tab-btn-3d'); if (dt) dt.classList.add('active');
+                    const mb = document.getElementById('mob-btn-3d'); if (mb) mb.classList.add('active');
                     if (!scene) init3D();
                 } else if (view === 'decision_desk') {
-                    document.getElementById('view-orderflow').style.display = 'none';
-                    document.getElementById('view-3d-floor').style.display = 'none';
-                    const dd = document.getElementById('view-decision-desk'); if (dd) dd.style.display = 'block';
-                    event.target.classList.add('active');
+                    if (ddView) { ddView.style.display = 'block'; ddView.classList.add('view-motion'); }
+                    const dt = document.getElementById('tab-btn-desk'); if (dt) dt.classList.add('active');
+                    const mb = document.getElementById('mob-btn-desk'); if (mb) mb.classList.add('active');
                     renderDecisionDesk();
                 }
+                playAudioFx('alert');
             }
 
             function renderDecisionDesk() {
@@ -2718,6 +2930,168 @@ def index():
                     sessEl.style.color = sessionColor;
                 }
             }
+
+            // --- INTERACTIVE CYBER CURSOR, PARTICLE TRAIL & MOTION DYNAMICS ---
+            let mouseX = window.innerWidth / 2;
+            let mouseY = window.innerHeight / 2;
+            let auraX = mouseX;
+            let auraY = mouseY;
+            const cursorDot = document.getElementById('cyber-cursor-dot');
+            const cursorAura = document.getElementById('cyber-cursor-aura');
+            const trailCanvas = document.getElementById('cursor-trail-canvas');
+            let trailCtx = null;
+            let trailParticles = [];
+
+            if (trailCanvas) {
+                trailCtx = trailCanvas.getContext('2d');
+                const resizeTrail = () => {
+                    trailCanvas.width = window.innerWidth;
+                    trailCanvas.height = window.innerHeight;
+                };
+                resizeTrail();
+                window.addEventListener('resize', resizeTrail);
+            }
+
+            // Particle class for cyber cursor trail
+            class CursorParticle {
+                constructor(x, y) {
+                    this.x = x;
+                    this.y = y;
+                    this.vx = (Math.random() - 0.5) * 1.6;
+                    this.vy = (Math.random() - 0.5) * 1.6;
+                    this.life = 1.0;
+                    this.decay = 0.035 + Math.random() * 0.03;
+                    this.size = 2.2 + Math.random() * 2.5;
+                    this.hue = Math.random() > 0.4 ? '56, 189, 248' : '16, 185, 129';
+                }
+                update() {
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.life -= this.decay;
+                    this.size = Math.max(0.2, this.size * 0.95);
+                }
+                draw(ctx) {
+                    if (this.life <= 0) return;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${this.hue}, ${this.life * 0.8})`;
+                    ctx.shadowColor = `rgba(${this.hue}, 0.8)`;
+                    ctx.shadowBlur = 8;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            let lastParticleTime = 0;
+            window.addEventListener('mousemove', (e) => {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                document.documentElement.style.setProperty('--mouse-x', `${mouseX}px`);
+                document.documentElement.style.setProperty('--mouse-y', `${mouseY}px`);
+
+                if (cursorDot) {
+                    cursorDot.style.left = `${mouseX}px`;
+                    cursorDot.style.top = `${mouseY}px`;
+                }
+
+                const now = performance.now();
+                if (now - lastParticleTime > 25 && trailParticles.length < 80) {
+                    lastParticleTime = now;
+                    trailParticles.push(new CursorParticle(mouseX, mouseY));
+                    if (Math.random() > 0.5) {
+                        trailParticles.push(new CursorParticle(mouseX + (Math.random() - 0.5) * 6, mouseY + (Math.random() - 0.5) * 6));
+                    }
+                }
+            }, { passive: true });
+
+            // Elastic Lerp Loop for Aura & Particle Render
+            function animateCyberCursor() {
+                auraX += (mouseX - auraX) * 0.22;
+                auraY += (mouseY - auraY) * 0.22;
+
+                if (cursorAura) {
+                    cursorAura.style.left = `${auraX}px`;
+                    cursorAura.style.top = `${auraY}px`;
+                }
+
+                if (trailCtx && trailCanvas) {
+                    trailCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+                    for (let i = trailParticles.length - 1; i >= 0; i--) {
+                        const p = trailParticles[i];
+                        p.update();
+                        p.draw(trailCtx);
+                        if (p.life <= 0) {
+                            trailParticles.splice(i, 1);
+                        }
+                    }
+                }
+
+                requestAnimationFrame(animateCyberCursor);
+            }
+            requestAnimationFrame(animateCyberCursor);
+
+            // Hover detection for magnetic scaling aura
+            document.addEventListener('mouseover', (e) => {
+                if (!cursorAura) return;
+                const target = e.target.closest('button, .tile-unit, .tab-btn, .dock-btn, .mob-nav-btn, .of-seg-btn, a, input, select, .focus-card');
+                if (target) {
+                    cursorAura.classList.add('cursor-hover');
+                }
+            });
+            document.addEventListener('mouseout', (e) => {
+                if (!cursorAura) return;
+                const target = e.target.closest('button, .tile-unit, .tab-btn, .dock-btn, .mob-nav-btn, .of-seg-btn, a, input, select, .focus-card');
+                if (target) {
+                    cursorAura.classList.remove('cursor-hover');
+                }
+            });
+
+            // Interactive 3D Card Tilt Effect on mouse movement
+            document.addEventListener('mousemove', (e) => {
+                const card = e.target.closest('.tile-unit, .focus-card');
+                if (card) {
+                    const rect = card.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    const rotateX = ((y - centerY) / centerY) * -6;
+                    const rotateY = ((x - centerX) / centerX) * 6;
+                    card.style.transform = `perspective(600px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) translateY(-2px) scale3d(1.02, 1.02, 1.02)`;
+                }
+            }, { passive: true });
+
+            document.addEventListener('mouseout', (e) => {
+                const card = e.target.closest('.tile-unit, .focus-card');
+                if (card) {
+                    card.style.transform = '';
+                }
+            });
+
+            // Mobile Touch Ripple Dynamics
+            document.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                if (!touch) return;
+                const ripple = document.createElement('div');
+                ripple.style.position = 'fixed';
+                ripple.style.left = `${touch.clientX}px`;
+                ripple.style.top = `${touch.clientY}px`;
+                ripple.style.width = '14px';
+                ripple.style.height = '14px';
+                ripple.style.borderRadius = '50%';
+                ripple.style.pointerEvents = 'none';
+                ripple.style.zIndex = '999999';
+                ripple.style.background = 'radial-gradient(circle, rgba(56, 189, 248, 0.6) 0%, rgba(56, 189, 248, 0) 70%)';
+                ripple.style.transform = 'translate(-50%, -50%) scale(1)';
+                ripple.style.transition = 'transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.45s ease-out';
+                document.body.appendChild(ripple);
+
+                requestAnimationFrame(() => {
+                    ripple.style.transform = 'translate(-50%, -50%) scale(5.5)';
+                    ripple.style.opacity = '0';
+                });
+                setTimeout(() => ripple.remove(), 480);
+            }, { passive: true });
 
             window.onload = () => {
                 renderDeltaHistogram();
