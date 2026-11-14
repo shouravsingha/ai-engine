@@ -107,29 +107,38 @@ class StrategyEvolver:
         target_dist = abs(tp - entry)
 
         findings = []
+        is_true_setup = False
+        hypothesis_verdict = "SETUP_HYPOTHESIS_PENDING"
+
         if is_win:
+            is_true_setup = True
+            hypothesis_verdict = "SETUP_HYPOTHESIS_VALID (TP_HIT)"
             if r_multiple >= 2.0:
                 verdict = "FLAWLESS_TARGET_EXPANSION"
-                findings.append("Trade achieved clean institutional 2R+ expansion without premature invalidation.")
+                findings.append("Trade achieved clean institutional 2R+ target expansion. Setup hypothesis proven TRUE.")
             else:
                 verdict = "PARTIAL_OR_TRAIL_PROFIT"
-                findings.append(f"Trade banked positive return (+{r_multiple:.2f}R) via trailing defense or session close.")
+                findings.append(f"Trade banked positive return (+{r_multiple:.2f}R). Setup directional thesis was VALID.")
         else:
+            is_true_setup = False
+            hypothesis_verdict = "SETUP_HYPOTHESIS_INVALID (SL_HIT)"
             if highest_favorable_price:
                 favorable_move = abs(highest_favorable_price - entry)
                 if favorable_move >= (risk_dist * 1.2):
                     verdict = "POST_MORTEM_MISSED_HARVEST"
-                    findings.append(f"Trade reached +{favorable_move/risk_dist:.1f}R before reversing into stop. Review break-even threshold.")
+                    findings.append(f"Trade reached +{favorable_move/risk_dist:.1f}R before reversing into stop. Setup had initial momentum but failed target.")
                 else:
                     verdict = "CLEAN_STRUCTURAL_INVALIDATION"
-                    findings.append("Immediate market invalidation. Stop loss successfully capped maximum risk.")
+                    findings.append("Immediate market invalidation. Setup hypothesis proven FALSE (SL hit capped max risk).")
             else:
                 verdict = "CONTROLLED_RISK_ABSORPTION"
-                findings.append("Trade absorbed nominal stop loss. Risk manager held dollar cap.")
+                findings.append("Trade absorbed nominal stop loss. Setup hypothesis proven FALSE.")
 
         audit_record = {
             "trade_id": trade_id,
             "symbol": symbol,
+            "hypothesis_verdict": hypothesis_verdict,
+            "is_true_setup": is_true_setup,
             "verdict": verdict,
             "r_multiple": r_multiple,
             "pnl": pnl,

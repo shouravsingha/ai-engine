@@ -501,7 +501,7 @@ class MasterOrchestrator:
             # Strategy Evolver Forensic Dissection
             risk_amt = max(abs(ct.get('dollar_risk', 1.0)), 0.1)
             r_mult = round(pnl / risk_amt, 2)
-            self.strategy_evolver.generate_trade_post_mortem(
+            post_mortem = self.strategy_evolver.generate_trade_post_mortem(
                 trade_id=ct.get('id', 0),
                 symbol=sym,
                 side=ct.get('side', 'BUY'),
@@ -512,6 +512,9 @@ class MasterOrchestrator:
                 pnl=pnl,
                 r_multiple=r_mult
             )
+            hypo_tag = post_mortem.get("hypothesis_verdict", "SETUP_PROCESSED")
+            self.log(f"🧠 AI SETUP VALIDATION AUDIT: {hypo_tag} | Trade #{ct['id']} | Result: {post_mortem.get('verdict')}")
+            self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 SETUP VALIDATION: Trade #{ct['id']} resolved to {hypo_tag}. Forensic Verdict: {post_mortem.get('verdict')}. Learning weights updated.")
             self.telegram.send_trade_close(ct, self.exness.balance)
             self.branding.generate_firm_content("BULLISH", f"${active_p:,.2f}", ct)
 

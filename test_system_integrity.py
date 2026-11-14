@@ -125,7 +125,8 @@ class TestSystemIntegrity(unittest.TestCase):
         actions = self.brain.evaluate_open_positions(mock_positions, {})
         self.assertEqual(len(actions), 0, "Trade must patiently wait and NOT be prematurely auto-closed on minor negative pullback!")
 
-        # When emergency circuit breaker is explicitly enabled, it auto-liquidates
+        # When emergency circuit breaker is explicitly enabled (and pure_tp_sl_mode disabled), it auto-liquidates
+        self.brain.pure_tp_sl_mode = False
         self.brain.enable_emergency_close = True
         actions_em = self.brain.evaluate_open_positions(mock_positions, {})
         self.assertEqual(len(actions_em), 1)
@@ -147,7 +148,14 @@ class TestSystemIntegrity(unittest.TestCase):
         actions_small = self.brain.evaluate_open_positions(mock_pos_small, {})
         self.assertEqual(len(actions_small), 0, "Micro-profit must NOT choke trade with premature Break-Even")
 
-        # 2. Substantial profit (+$2.60 >= $2.50) triggers Patient Break-Even Shield with +$0.30 cushion
+        # 2. In Pure TP/SL Mode (Default per user directive):
+        # AI lets the trade run completely unhindered to either TP or SL without midway meddling.
+        self.assertTrue(self.brain.pure_tp_sl_mode)
+        actions_pure = self.brain.evaluate_open_positions(mock_pos_small, {})
+        self.assertEqual(len(actions_pure), 0, "Pure TP/SL mode must not generate midway modification actions")
+
+        # 3. When pure_tp_sl_mode is False, substantial profit (+$2.60 >= $2.50) triggers Patient Break-Even Shield with +$0.30 cushion
+        self.brain.pure_tp_sl_mode = False
         mock_pos_be = [{
             "ticket": 2001,
             "symbol": "XAUUSDm",
@@ -165,6 +173,8 @@ class TestSystemIntegrity(unittest.TestCase):
         self.assertIn("BREAK-EVEN SHIELD ARMED", actions_be[0]["reason"])
 
     def test_brain_wide_institutional_trailing(self):
+        # Disable pure_tp_sl_mode to test trailing logic
+        self.brain.pure_tp_sl_mode = False
         # Trade reached BE, now surges to +$4.50 profit
         mock_pos = [{
             "ticket": 2002,

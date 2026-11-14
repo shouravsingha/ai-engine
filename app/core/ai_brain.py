@@ -32,10 +32,11 @@ class AIBrainOverseer:
             "cooldown_until": 0.0, # timestamp
             "daily_drawdown_limit": 3.50, # USD max loss per session
             "daily_pnl_tracker": 0.0,
-            "risk_free_mode": "BREAKEVEN_RUN_TO_TP"
+            "risk_free_mode": "PURE_BINARY_TP_SL"
         }
-        self.enable_trailing_stop = False # User directive: Don't choke trades with trailing; lock Break-Even for a 100% risk-free trade and let it run to TP
-        self.enable_emergency_close = False # User directive: Trade entry holei jeno wait kore (Do NOT auto-close running trades on minor pullback; let the trade wait and run with its Stop Loss)
+        self.pure_tp_sl_mode = True # User directive: Let trade run strictly to TP or SL without midway modification, so AI learns clean TRUE/FALSE setup validity
+        self.enable_trailing_stop = False # User directive: Don't choke trades with trailing
+        self.enable_emergency_close = False # User directive: Trade entry holei jeno wait kore (Do NOT auto-close running trades on minor pullback)
         self.emergency_loss_limit = -1.25
         self.managed_positions_state: Dict[int, Dict[str, Any]] = {}
 
@@ -125,6 +126,17 @@ class AIBrainOverseer:
         actions = []
         now = datetime.now()
         now_str = now.strftime("%H:%M:%S")
+
+        # -------------------------------------------------------------
+        # PURE BINARY TP/SL VALIDATION MODE (USER DIRECTIVE)
+        # When pure_tp_sl_mode is True, trades run completely unhindered
+        # to their hard server-side Take-Profit (TP) or Stop-Loss (SL).
+        # No midway premature break-even or trailing stops are applied.
+        # This guarantees clean, uncensored statistical feedback so the AI
+        # engine knows unequivocally if the setup hypothesis was TRUE or FALSE.
+        # -------------------------------------------------------------
+        if self.pure_tp_sl_mode:
+            return actions
 
         for pos in open_positions:
             ticket = pos.get("ticket")
