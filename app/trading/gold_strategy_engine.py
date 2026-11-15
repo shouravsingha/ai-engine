@@ -14,11 +14,11 @@ import math
 
 
 class GoldStrategyEngine:
-    def __init__(self, max_sl_distance: float = 3.50):
+    def __init__(self, max_sl_distance: float = 5.00):
         self.asian_high: Optional[float] = None
         self.asian_low: Optional[float] = None
         self.asian_date: Optional[str] = None
-        self.max_gold_sl_distance: float = max_sl_distance  # Cap SL distance (default $3.50)
+        self.max_gold_sl_distance: float = max_sl_distance  # Cap SL distance (calibrated to $5.00 / 50 pips)
 
     def calculate_ema(self, prices: List[float], period: int) -> float:
         """Calculates Exponential Moving Average for a series of closes."""

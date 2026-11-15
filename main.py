@@ -242,10 +242,10 @@ def direct_execute(data: dict):
     symbol = data.get("symbol", "XAUUSDm")
     side = data.get("side", "BUY")
     price = float(data.get("price", 2748.20))
-    # Calibrated, realistic institutional SL/TP (Never use raw percentages that blow up Gold SL to $11+)
+    # Calibrated, realistic institutional SL/TP (Option A: $5.00 SL / 50 pips, $12.00 TP / 120 pips, 2.4R)
     if "XAU" in symbol.upper() or "GOLD" in symbol.upper():
-        sl_dist = 2.50  # Tight Gold scalp SL ($2.50 / 25 pips)
-        tp_dist = 6.00  # Realistic day-trade TP ($6.00 / 60 pips, 2.4R)
+        sl_dist = 5.00  # Wide breathing room Gold SL ($5.00 / 50 pips)
+        tp_dist = 12.00  # Institutional target TP ($12.00 / 120 pips, 2.4R)
         sl = round(price - sl_dist, 2) if side == "BUY" else round(price + sl_dist, 2)
         tp = round(price + tp_dist, 2) if side == "BUY" else round(price - tp_dist, 2)
     elif "BTC" in symbol.upper():

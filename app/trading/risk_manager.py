@@ -124,14 +124,14 @@ class RiskManager:
         if account_balance < 50.0:
             return {
                 "tier": "MICRO",
-                "max_dollar_risk": min(max(account_balance * 0.05, 0.80), 1.25),
+                "max_dollar_risk": 5.00,  # Calibrated for Gold: Allows full $5.00 (50 pips) swing room on 0.01 lot
                 "volume_cap": 0.01,
                 "max_positions": 1
             }
         elif account_balance < 200.0:
             return {
                 "tier": "SMALL",
-                "max_dollar_risk": min(account_balance * 0.02, 3.00),
+                "max_dollar_risk": min(account_balance * 0.05, 6.00),
                 "volume_cap": 0.02,
                 "max_positions": 1
             }

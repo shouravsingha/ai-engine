@@ -52,8 +52,9 @@ class AIBrainOverseer:
             return {"approved": False, "corrected": True, "correction_text": correction}
 
         # Guard against excessive dollar risk on micro accounts (< $50)
-        if balance < 50.0 and dollar_risk > 1.25:
-            correction = f"DOLLAR CEILING VIOLATION: Risk of ${dollar_risk:.2f} exceeds micro account maximum ($1.25). Rejected."
+        # Calibrated for Gold: $5.00 max dollar risk allows full 50-pip breathing room on 0.01 lot
+        if balance < 50.0 and dollar_risk > 5.50:
+            correction = f"DOLLAR CEILING VIOLATION: Risk of ${dollar_risk:.2f} exceeds micro account maximum ($5.00). Rejected."
             self.brain_audits.insert(0, {"time": now_str, "type": "RISK_CEILING_REJECT", "agent": agent_name, "message": correction, "status": "BLOCKED"})
             return {"approved": False, "corrected": True, "correction_text": correction}
 

@@ -45,10 +45,10 @@ class MasterOrchestrator:
         self.smc_engines_15m = {"gold": SMCEngine(), "btc": SMCEngine(), "eth": SMCEngine()}
         self.smc_engines = self.smc_engines_1h # Backward compatibility
         self.fib = FibonacciEngine()
-        self.risk = RiskManager(risk_percent=1.0, min_rrr=2.5)
+        self.risk = RiskManager(risk_percent=1.0, min_rrr=2.4)
         self.time_machine = TimeMachineEngine(default_replays=2500, horizon_bars=36)
         self.orb = SessionORBEngine(or_minutes=15, default_target_r=2.5)
-        self.gold_engine = GoldStrategyEngine(max_sl_distance=2.50)
+        self.gold_engine = GoldStrategyEngine(max_sl_distance=5.00)
         self.macro = MacroPipeline(cache_ttl_seconds=30)
         self.account = DemoAccount(initial_capital=50000.0)
         self.cloud_command_queue = []

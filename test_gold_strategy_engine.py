@@ -71,7 +71,8 @@ class TestGoldStrategyEngine(unittest.TestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res["side"], "BUY")
         self.assertEqual(res["entry"], 2745.5)
-        self.assertEqual(res["sl"], 2742.0)  # Clamped to entry - 3.50 max SL limit
+        # Entry 2745.5 - range_mid 2741.5 is $4.00, which cleanly fits inside $5.00 max SL
+        self.assertEqual(res["sl"], 2741.5)
         print("Setup 2 Overlap ORB:", res)
 
     def test_setup_3_trend_reclaim(self):
