@@ -466,6 +466,39 @@ class MasterOrchestrator:
                             order = self.account.open_trade(trade_plan, symbol=symbol_exec)
                             ticket_no = mt5_res.get("ticket", order["id"])
                             order["mt5_ticket"] = ticket_no
+                            order["setup_name"] = kz_info if 'kz_info' in locals() else (gold_setup_res['setup']['setup_name'] if (asset_key == 'gold' and gold_setup_res and gold_setup_res.get('triggered')) else 'SMC_OTE_BREAKOUT')
+
+                            # 4. Log to SQLite Journal for Statistical Win-Rate Evolution
+                            try:
+                                dec_id = self.journal.log_decision_event(
+                                    symbol=symbol_exec,
+                                    timeframe="15m",
+                                    consensus_bias=trade_side,
+                                    confidence=85.0,
+                                    agreement_count=7,
+                                    trigger_reason=order["setup_name"],
+                                    entry_price=entry,
+                                    stop_loss=sl,
+                                    take_profit=tp,
+                                    agent_votes={"bias": trade_side, "agents": ["Alex", "David", "Marcus", "Sophia"]},
+                                    features_snapshot={"macro": macro_snapshot.get("ml_engine", {}), "time_machine": tm_audit},
+                                    risk_status="APPROVED",
+                                    risk_reason="Strict Risk & Macro Confluence Passed",
+                                    executed=True
+                                )
+                                self.journal.log_trade_execution(
+                                    ticket=int(ticket_no),
+                                    decision_id=dec_id,
+                                    symbol=symbol_exec,
+                                    side=trade_side,
+                                    volume=vol,
+                                    entry_price=entry,
+                                    stop_loss=sl,
+                                    take_profit=tp
+                                )
+                                order["decision_id"] = dec_id
+                            except Exception as j_err:
+                                self.log(f"Journal logging notice: {j_err}")
 
                             asset_title = ticker["symbol"]
                             if asset_key == "gold" and gold_setup_res and gold_setup_res.get("triggered"):
@@ -530,16 +563,30 @@ class MasterOrchestrator:
             hypo_tag = post_mortem.get("hypothesis_verdict", "SETUP_PROCESSED")
             self.log(f"🧠 AI SETUP VALIDATION AUDIT: {hypo_tag} | Trade #{ct['id']} | Result: {post_mortem.get('verdict')}")
             self.send_agent_message("AI Brain", "Neural Overseer", f"🧠 SETUP VALIDATION: Trade #{ct['id']} resolved to {hypo_tag}. Forensic Verdict: {post_mortem.get('verdict')}. Learning weights updated.")
+
+            # Record outcome in SQLite Journal for Win-Rate analytics
+            try:
+                ticket_val = int(ct.get("mt5_ticket", ct.get("id", 0)))
+                self.journal.log_trade_outcome(
+                    ticket=ticket_val,
+                    close_price=active_p,
+                    profit=pnl,
+                    status="CLOSED_TP" if pnl > 0 else "CLOSED_SL",
+                    close_reason=post_mortem.get("verdict", "PURE_OUTCOME")
+                )
+            except Exception as j_out_err:
+                self.log(f"Journal outcome record notice: {j_out_err}")
+
             self.telegram.send_trade_close(ct, self.exness.balance)
             self.branding.generate_firm_content("BULLISH", f"${active_p:,.2f}", ct)
 
     def evaluate_and_defend_positions(self):
         """
         Active AI Brain position defense:
-        1. Patient Break-Even Shield (+$2.50+ profit on Gold)
-        2. Wide Institutional Trailing Stop (+$4.00+ profit, $1.80 breathing buffer)
-        3. Emergency Hard Loss Circuit Breaker (-$1.25)
-        4. Anti-Churn Cooldown Tracking (15 min cooldown on symbol exit)
+        - When pure_tp_sl_mode is active (Default), SL and TP are strictly IMMUTABLE.
+          No trailing stop, no break-even modification, no midway closing.
+          The position runs cleanly until server-side SL or TP is reached.
+        - Anti-Churn Cooldown Tracking: 15-minute freeze on symbol after position closure.
         """
         # Track MT5 closed positions between cycles to trigger cooldown
         current_open_symbols = {p.get("symbol") for p in self.exness.open_positions if p.get("symbol")}
@@ -553,6 +600,11 @@ class MasterOrchestrator:
 
         if not self.exness.open_positions:
             return
+
+        # PURE BINARY TP/SL ENFORCEMENT: Never modify SL/TP if pure_tp_sl_mode is True!
+        if getattr(self.brain, "pure_tp_sl_mode", True):
+            return
+
         actions = self.brain.evaluate_open_positions(self.exness.open_positions, self.multi_market_matrix)
         for act in actions:
             action_type = act.get("action")

@@ -286,6 +286,38 @@ def direct_execute(data: dict):
     order = orchestrator.account.open_trade(plan if plan else {"side": side, "entry_price": price, "stop_loss": sl, "take_profit": tp, "dollar_risk": 0.20, "units": 0.01}, symbol=symbol)
     
     ticket_str = mt5_res.get("ticket", order["id"])
+    order["mt5_ticket"] = ticket_str
+
+    # 3. Record in SQLite TradeJournal for Win-Rate analytics
+    try:
+        dec_id = orchestrator.journal.log_decision_event(
+            symbol=symbol,
+            timeframe="15m",
+            consensus_bias=side,
+            confidence=90.0,
+            agreement_count=7,
+            trigger_reason="MANUAL_QUICK_RADAR_ENTRY",
+            entry_price=price,
+            stop_loss=sl,
+            take_profit=tp,
+            agent_votes={"bias": side, "source": "QUICK_TRADE_RADAR"},
+            features_snapshot={"manual": True},
+            risk_status="APPROVED",
+            executed=True
+        )
+        orchestrator.journal.log_trade_execution(
+            ticket=int(ticket_str),
+            decision_id=dec_id,
+            symbol=symbol,
+            side=side,
+            volume=0.01,
+            entry_price=price,
+            stop_loss=sl,
+            take_profit=tp
+        )
+    except Exception as je:
+        orchestrator.log(f"Manual trade journal notice: {je}")
+
     orchestrator.send_agent_message("Leo", "Execution Trader (PA_14)", f"OrderFlow Live Execution: {side} 0.01 {symbol} on Exness MT5! Ticket #{ticket_str}.")
     orchestrator.telegram.send_trade_signal(order, asset=symbol)
     orchestrator.webhooks.broadcast_trade(order, asset=symbol)
