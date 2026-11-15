@@ -158,6 +158,11 @@ def save_cloud_config(data: CloudConfigInput):
     orchestrator.send_agent_message("Alex", "Chief Quant (PA_01)", f"☁️ 24/7 Cloud MetaAPI Gateway configured. Status: {'ACTIVE' if sync_res.get('status') == 'success' else 'STANDBY'}.")
     return {"status": "success", "configured": configured, "cloud_sync": sync_res}
 
+@app.get("/api/macro/live")
+def get_macro_live():
+    """Real-time Macro Sentiment, US Dollar Index (DXY), US 10-Year Yield & ML Scoring."""
+    return JSONResponse(orchestrator.macro.get_live_macro_snapshot())
+
 @app.get("/api/cloud/status")
 def get_cloud_status():
     gw = orchestrator.exness.cloud_gateway
@@ -1386,6 +1391,7 @@ def index():
                             <span id="mtf-eth-badge" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap;">ETH: 4H 🟢 | 1H 🟢 | 15m 🟢</span>
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px;">
+                            <span id="macro-yield-badge" style="background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.35); color: #fbbf24; padding: 2px 8px; border-radius: 5px; font-weight: 800; white-space: nowrap;" title="Real-Time Macro Pipeline: DXY + US 10-Year Yield + Fed Funds Rate Probability with Vectorized Machine Learning Scoring.">🏛️ DXY: -- | US10Y: -- | Macro: --</span>
                             <span id="ict-killzone-badge" style="background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.35); color: #38bdf8; padding: 2px 8px; border-radius: 5px; font-weight: 800; white-space: nowrap;">🎯 ICT Killzone: Scanning</span>
                             <span id="brain-psy-badge" style="background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.35); color: #c084fc; padding: 2px 8px; border-radius: 5px; font-weight: 800; white-space: nowrap;" title="Pure Binary Outcome: Trade runs strictly to hard TP or SL so AI engine validates TRUE vs FALSE setup hypothesis for model evolution.">🎯 Pure TP/SL Mode: Setup Validation Active</span>
                         </div>
@@ -2720,6 +2726,33 @@ def index():
                         renderMtfBadge('mtf-gold-badge', 'GOLD', d.market_matrix.gold);
                         renderMtfBadge('mtf-btc-badge', 'BTC', d.market_matrix.btc);
                         renderMtfBadge('mtf-eth-badge', 'ETH', d.market_matrix.eth);
+
+                        // Real-Time Macro Yield & DXY Sentiment Badge
+                        const macroBadge = document.getElementById('macro-yield-badge');
+                        if (macroBadge && d.market_matrix && d.market_matrix.gold && d.market_matrix.gold.macro) {
+                            const macro = d.market_matrix.gold.macro;
+                            const dxyP = macro.dxy ? macro.dxy.price.toFixed(2) : '--';
+                            const us10P = macro.us10y ? macro.us10y.yield_pct.toFixed(2) : '--';
+                            const score = macro.ml_engine ? macro.ml_engine.gold_bullish_index : 50;
+                            const bias = macro.ml_engine ? macro.ml_engine.bias : 'NEUTRAL';
+                            
+                            let color = '#fbbf24';
+                            let bg = 'rgba(245, 158, 11, 0.12)';
+                            let border = 'rgba(245, 158, 11, 0.35)';
+                            if (score >= 53.0) {
+                                color = '#10b981';
+                                bg = 'rgba(16, 185, 129, 0.15)';
+                                border = 'rgba(16, 185, 129, 0.4)';
+                            } else if (score <= 47.0) {
+                                color = '#f87171';
+                                bg = 'rgba(239, 68, 68, 0.15)';
+                                border = 'rgba(239, 68, 68, 0.4)';
+                            }
+                            macroBadge.style.color = color;
+                            macroBadge.style.background = bg;
+                            macroBadge.style.borderColor = border;
+                            macroBadge.innerHTML = `🏛️ DXY: ${dxyP} | US10Y: ${us10P}% | Macro ML: ${score}% (${bias})`;
+                        }
 
                         // ICT Killzone status badge
                         const kzBadge = document.getElementById('ict-killzone-badge');

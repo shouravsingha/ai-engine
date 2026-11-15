@@ -19,6 +19,7 @@ from app.trading.orderflow_engine import OrderFlowEngine
 from app.trading.time_machine import TimeMachineEngine
 from app.trading.orb_engine import SessionORBEngine
 from app.trading.gold_strategy_engine import GoldStrategyEngine
+from app.trading.macro_pipeline import MacroPipeline
 from app.core.ai_brain import AIBrainOverseer
 from app.agency.branding_engine import BrandingEngine
 from app.agency.webhook_dispatcher import SocialWebhookDispatcher
@@ -48,6 +49,7 @@ class MasterOrchestrator:
         self.time_machine = TimeMachineEngine(default_replays=2500, horizon_bars=36)
         self.orb = SessionORBEngine(or_minutes=15, default_target_r=2.5)
         self.gold_engine = GoldStrategyEngine(max_sl_distance=2.50)
+        self.macro = MacroPipeline(cache_ttl_seconds=30)
         self.account = DemoAccount(initial_capital=50000.0)
         self.cloud_command_queue = []
         self.exness = ExnessBridge(command_queue=self.cloud_command_queue)
@@ -413,6 +415,14 @@ class MasterOrchestrator:
                     trade_plan = self.risk.evaluate_and_size_trade(self.exness.balance, trade_side, entry, sl, tp, symbol=symbol_exec)
                     if trade_plan:
                         vol = trade_plan["volume"]
+                        # 0. REAL-TIME MACRO SENTIMENT & YIELD CONFLUENCE AUDIT
+                        macro_audit = self.macro.audit_trade_macro_confluence(trade_side)
+                        if not macro_audit.get("approved", True):
+                            macro_veto = macro_audit.get("veto_reason", "Macro condition vetoed trade")
+                            self.log(f"🏛️ Trade Blocked by Macro Pipeline for {symbol_exec}: {macro_veto}")
+                            self.send_agent_message("Sophia", "Macro Economist (MACRO_01)", f"🏛️ MACRO VETO: {macro_veto}")
+                            continue
+
                         # 1. TIME MACHINE MONTE CARLO PROBABILITY SIMULATION
                         tm_audit = self.time_machine.simulate_trade(
                             symbol_exec, trade_side, entry, sl, tp, candles=candles_15m, replays=2500
@@ -478,6 +488,11 @@ class MasterOrchestrator:
                         else:
                             fail_reason = mt5_res.get('comment') or mt5_res.get('message') or 'Rejected'
                             self.log(f"⚠️ Trade Execution Failed for {symbol_exec}: {fail_reason}")
+
+        # Multi-market matrix update with real-time Macro Yield Intelligence
+        macro_snapshot = self.macro.get_live_macro_snapshot()
+        if "gold" in matrix:
+            matrix["gold"]["macro"] = macro_snapshot
 
         self.multi_market_matrix = matrix
 
