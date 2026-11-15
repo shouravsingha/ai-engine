@@ -1302,8 +1302,8 @@ def index():
                     MT5 #434353249
                 </span>
                 <span style="color: #334155;">|</span>
-                <span>Bal: <strong id="nav-exness-balance" style="color: #38bdf8; font-weight: 800;">$20.21 USD</strong></span>
-                <span>Eq: <strong id="nav-exness-equity" style="color: #10b981; font-weight: 800;">$20.21</strong></span>
+                <span>Bal: <strong id="nav-exness-balance" style="color: #38bdf8; font-weight: 800;">$25.44 USD</strong></span>
+                <span>Eq: <strong id="nav-exness-equity" style="color: #10b981; font-weight: 800;">$25.44</strong></span>
                 <span>PnL: <strong id="nav-exness-pnl" style="color: #facc15; font-weight: 800;">+$0.00</strong></span>
                 <span id="nav-open-count" style="background: #0f172a; border: 1px solid #334155; padding: 2px 7px; border-radius: 4px; color: #38bdf8; font-weight: 800; font-size: 10.5px;">0 Live Orders</span>
             </div>

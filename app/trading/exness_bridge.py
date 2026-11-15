@@ -21,7 +21,8 @@ class ExnessBridge:
         self.password = os.environ.get("MT5_PASSWORD", "ShouravDemo60@#")
         self.server = os.environ.get("MT5_SERVER", "Exness-MT5Trial7")
         self.path = os.environ.get("MT5_PATH", r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe")
-        self.balance = 20.21
+        self.balance = 25.44
+        self.equity = 25.44
         self.equity = 20.21
         self.currency = "USD"
         self.leverage = "1:2000"
