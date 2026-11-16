@@ -470,6 +470,7 @@ class MasterOrchestrator:
 
                             # 4. Log to SQLite Journal for Statistical Win-Rate Evolution
                             try:
+                                macro_snap = self.macro.get_live_macro_snapshot()
                                 dec_id = self.journal.log_decision_event(
                                     symbol=symbol_exec,
                                     timeframe="15m",
@@ -481,7 +482,7 @@ class MasterOrchestrator:
                                     stop_loss=sl,
                                     take_profit=tp,
                                     agent_votes={"bias": trade_side, "agents": ["Alex", "David", "Marcus", "Sophia"]},
-                                    features_snapshot={"macro": macro_snapshot.get("ml_engine", {}), "time_machine": tm_audit},
+                                    features_snapshot={"macro": macro_snap.get("ml_engine", {}), "time_machine": tm_audit},
                                     risk_status="APPROVED",
                                     risk_reason="Strict Risk & Macro Confluence Passed",
                                     executed=True
@@ -582,56 +583,25 @@ class MasterOrchestrator:
 
     def evaluate_and_defend_positions(self):
         """
-        Active AI Brain position defense:
-        - When pure_tp_sl_mode is active (Default), SL and TP are strictly IMMUTABLE.
-          No trailing stop, no break-even modification, no midway closing.
-          The position runs cleanly until server-side SL or TP is reached.
-        - Anti-Churn Cooldown Tracking: 15-minute freeze on symbol after position closure.
+        PURE 'SET AND FORGET' EXECUTION MODEL:
+        System only executes trades with pre-calculated SL and TP.
+        Once the order is placed on MT5 broker server:
+        - NO trailing stop
+        - NO break-even adjustment
+        - NO mid-trade tampering or premature exit
+        The trade waits cleanly until the broker triggers either hard TP or hard SL!
         """
-        # Track MT5 closed positions between cycles to trigger cooldown
+        # Track MT5 closed positions between cycles to trigger anti-churn cooldown
         current_open_symbols = {p.get("symbol") for p in self.exness.open_positions if p.get("symbol")}
         if hasattr(self, "_last_known_open_symbols") and self._last_known_open_symbols:
             closed_symbols = self._last_known_open_symbols - current_open_symbols
             for cs in closed_symbols:
                 self.symbol_cooldowns[cs] = time.time() + 900.0  # 15 min cooldown
-                self.log(f"🛡️ ANTI-CHURN COOLDOWN: Position on {cs} closed. 15-minute freeze engaged to prevent instant re-entry.")
-                self.send_agent_message("Marcus", "Risk Officer (PA_02)", f"🛡️ ANTI-CHURN: {cs} position closed. Cooling down for 15 minutes before seeking new setups.")
+                self.log(f"🛡️ ANTI-CHURN COOLDOWN: Position on {cs} settled. 15-minute freeze engaged.")
+                self.send_agent_message("Marcus", "Risk Officer (PA_02)", f"🛡️ {cs} trade settled. Cooldown active for 15 minutes.")
         self._last_known_open_symbols = current_open_symbols
-
-        if not self.exness.open_positions:
-            return
-
-        # STRICT IMMUTABLE SL/TP LOCK (TRAILING STOP & MIDWAY MODIFICATIONS COMPLETELY BLOCKED)
-        # Trade entry hole server-e hard SL ($5.00) ebong TP ($12.00) permanently set thakbe.
-        # Konovabei trailing stop ba modify_sl call hobe na!
+        # Absolutely nothing else to do. Trade runs untouched to TP or SL!
         return
-        for act in actions:
-            action_type = act.get("action")
-            
-            # MODIFY SL / TRAILING
-            if action_type == "modify_sl":
-                m_res = self.exness.modify_position_sl_tp(act["ticket"], act["new_sl"], act.get("new_tp", 0.0))
-                if m_res.get("status") in ("success", "queued"):
-                    self.send_agent_message("Marcus", "Risk Officer (PA_02)", act["reason"])
-                    self.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ DEFENSE TRIGGER: {act['symbol']} #{act['ticket']} protected.")
-                    self.telegram.send_message(f"🛡️ <b>AI POSITION DEFENSE:</b>\n{act['reason']}")
-                    self.log(f"🛡️ Position #{act['ticket']} ({act['symbol']}): {act['reason']}")
-                elif m_res.get("retcode") == 10027:
-                    if not getattr(self, "_algo_warned", False):
-                        self.send_agent_message("Marcus", "Risk Officer (PA_02)", "⚠️ MT5 এ 'Algo Trading' (Ctrl+E) বন্ধ রয়েছে। ব্রেকেভেন ও ট্রেইলিং লক করতে টার্মিনালে 'Algo Trading' বাটনটি ক্লিক করে চালু করুন।")
-                        self.log("⚠️ MT5 AutoTrading is disabled by client (Retcode 10027). Please enable Algo Trading in MT5.")
-                        self._algo_warned = True
-
-            # SMART PROFIT HARVEST / EMERGENCY CIRCUIT BREAKER
-            elif action_type == "close_position":
-                c_res = self.exness.close_position(act["ticket"])
-                if c_res.get("status") in ("success", "queued"):
-                    sym = act.get("symbol", "XAUUSDm")
-                    self.symbol_cooldowns[sym] = time.time() + 900.0  # 15 minutes anti-churn cooldown
-                    self.send_agent_message("Marcus", "Risk Guardian (PA_02)", act["reason"])
-                    self.send_agent_message("AI Brain", "Neural Overseer", f"⚡ DEFENSE CLOSE: {sym} #{act['ticket']} settled. 15m Anti-Churn Cooldown engaged.")
-                    self.telegram.send_message(f"⚡ <b>AI POSITION DEFENSE EXIT:</b>\n{act['reason']}\n🛡️ <i>15-Minute Anti-Churn Cooldown engaged on {sym}.</i>")
-                    self.log(f"⚡ Position #{act['ticket']} ({sym}): {act['reason']}")
 
     def start_background_loop(self):
         if self.is_running:
