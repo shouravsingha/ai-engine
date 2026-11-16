@@ -32,11 +32,11 @@ class AIBrainOverseer:
             "cooldown_until": 0.0, # timestamp
             "daily_drawdown_limit": 3.50, # USD max loss per session
             "daily_pnl_tracker": 0.0,
-            "risk_free_mode": "PURE_BINARY_TP_SL"
+            "risk_free_mode": "PURE_IMMUTABLE_TP_SL"
         }
-        self.pure_tp_sl_mode = True # User directive: Let trade run strictly to TP or SL without midway modification, so AI learns clean TRUE/FALSE setup validity
-        self.enable_trailing_stop = False # User directive: Don't choke trades with trailing
-        self.enable_emergency_close = False # User directive: Trade entry holei jeno wait kore (Do NOT auto-close running trades on minor pullback)
+        self.pure_tp_sl_mode = True # User directive: Let trade run strictly to TP or SL without midway modification
+        self.enable_trailing_stop = False # PERMANENTLY DISABLED: Never trail or choke running trades
+        self.enable_emergency_close = False # Trade entry holei wait korbe
         self.emergency_loss_limit = -1.25
         self.managed_positions_state: Dict[int, Dict[str, Any]] = {}
 

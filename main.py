@@ -110,7 +110,7 @@ def assign_task(data: TaskInput):
         orchestrator.send_agent_message("AI Brain", "Neural Overseer", "🧠 Full workforce audit executed. All 7 robot agents calibrated.")
     elif "coffee" in task_text.lower():
         orchestrator.send_agent_message("Mia", "Viral Copywriter (PA_07)", "Taking a 2-minute coffee break at the lounge! ☕")
-        orchestrator.send_agent_message("Leo", "Execution Trader (PA_14)", "Grabbing an espresso, Exness trailing stops are active.")
+        orchestrator.send_agent_message("Leo", "Execution Trader (PA_14)", "Grabbing an espresso. Running positions locked strictly to TP and SL.")
     elif "scan" in task_text.lower() or "orderflow" in task_text.lower():
         orchestrator.run_simultaneous_scan()
         orchestrator.send_agent_message("Alex", "Chief Quant (PA_01)", "Simultaneous OrderFlow scan complete across Forex & Commodities.")

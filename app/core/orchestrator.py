@@ -601,11 +601,10 @@ class MasterOrchestrator:
         if not self.exness.open_positions:
             return
 
-        # PURE BINARY TP/SL ENFORCEMENT: Never modify SL/TP if pure_tp_sl_mode is True!
-        if getattr(self.brain, "pure_tp_sl_mode", True):
-            return
-
-        actions = self.brain.evaluate_open_positions(self.exness.open_positions, self.multi_market_matrix)
+        # STRICT IMMUTABLE SL/TP LOCK (TRAILING STOP & MIDWAY MODIFICATIONS COMPLETELY BLOCKED)
+        # Trade entry hole server-e hard SL ($5.00) ebong TP ($12.00) permanently set thakbe.
+        # Konovabei trailing stop ba modify_sl call hobe na!
+        return
         for act in actions:
             action_type = act.get("action")
             
