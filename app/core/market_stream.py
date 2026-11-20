@@ -38,10 +38,14 @@ class MarketStream:
             except Exception:
                 pass
 
-        # 2. Batch fetch Binance ticker for crypto & gold spot
+        # 2. Fast check: If Gold is already loaded live from MT5, return immediately without waiting on Binance
+        if tickers["gold"]["source"] == "Exness MT5 Live":
+            return tickers
+
+        # 3. Fallback batch fetch Binance ticker for crypto & gold spot if MT5 is closed
         try:
             url = "https://api.binance.com/api/v3/ticker/24hr"
-            res = requests.get(url, params={"symbols": '["PAXGUSDT","BTCUSDT","ETHUSDT"]'}, timeout=5)
+            res = requests.get(url, params={"symbols": '["PAXGUSDT","BTCUSDT","ETHUSDT"]'}, timeout=2)
             if res.status_code == 200:
                 for item in res.json():
                     sym = item["symbol"]
@@ -62,12 +66,46 @@ class MarketStream:
         return tickers
 
     def get_candles(self, asset_key: str, interval: str = "1h", limit: int = 30) -> List[Dict[str, float]]:
-        """Pulls OHLCV candles for any of the 3 markets."""
+        """Pulls OHLCV candles. For Gold, directly reads from local MT5 RAM in < 1ms."""
+        # 1. Fast Path for Gold via local MT5 RAM
+        if asset_key == "gold" and MT5_AVAILABLE:
+            try:
+                tf_map = {
+                    "1m": mt5.TIMEFRAME_M1,
+                    "m1": mt5.TIMEFRAME_M1,
+                    "5m": mt5.TIMEFRAME_M5,
+                    "m5": mt5.TIMEFRAME_M5,
+                    "15m": mt5.TIMEFRAME_M15,
+                    "m15": mt5.TIMEFRAME_M15,
+                    "1h": mt5.TIMEFRAME_H1,
+                    "h1": mt5.TIMEFRAME_H1,
+                    "4h": mt5.TIMEFRAME_H4,
+                    "h4": mt5.TIMEFRAME_H4,
+                    "1d": mt5.TIMEFRAME_D1,
+                    "d1": mt5.TIMEFRAME_D1,
+                }
+                mt5_tf = tf_map.get(interval.lower(), mt5.TIMEFRAME_M15)
+                rates = mt5.copy_rates_from_pos(self.exness_gold, mt5_tf, 0, limit)
+                if rates is not None and len(rates) >= 5:
+                    return [
+                        {
+                            "open": float(r["open"]),
+                            "high": float(r["high"]),
+                            "low": float(r["low"]),
+                            "close": float(r["close"]),
+                            "volume": float(r["tick_volume"])
+                        }
+                        for r in rates
+                    ]
+            except Exception:
+                pass
+
+        # 2. Secondary Path via Binance REST API for Crypto or fallback
         symbol = self.symbols.get(asset_key, "BTCUSDT")
         try:
             url = "https://api.binance.com/api/v3/klines"
             params = {"symbol": symbol, "interval": interval, "limit": limit}
-            res = requests.get(url, params=params, timeout=5)
+            res = requests.get(url, params=params, timeout=3)
             if res.status_code == 200:
                 candles = []
                 for c in res.json():

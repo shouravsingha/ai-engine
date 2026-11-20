@@ -185,20 +185,26 @@ class DecisionDesk:
             inval = liquidity_out.get("invalidation_level") or trend_out.get("invalidation_level")
             sl = float(inval) if inval and inval < last_close else round(last_close - (market_metrics.get("atr_14", 1.5) * 1.5), 2)
             risk_dist = abs(last_close - sl)
-            # Cap Gold SL to realistic scalp/day-trade range ($1.50 min, $3.00 max)
+            # Calibrated Gold Intraday SL ($3.00 - $4.20) and TP ($6.00 - $8.50) for realistic breathing room
             if "XAU" in symbol.upper() or "GOLD" in symbol.upper():
-                risk_dist = max(1.50, min(risk_dist, 3.00))
+                risk_dist = max(2.80, min(risk_dist, 4.20))
                 sl = round(last_close - risk_dist, 2)
-            tp = round(last_close + (risk_dist * adjusted_rrr), 2)
+                tp_dist = min(max(risk_dist * adjusted_rrr, 6.00), 8.50)
+                tp = round(last_close + tp_dist, 2)
+            else:
+                tp = round(last_close + (risk_dist * adjusted_rrr), 2)
         elif consensus_bias == "SELL":
             inval = liquidity_out.get("invalidation_level") or trend_out.get("invalidation_level")
             sl = float(inval) if inval and inval > last_close else round(last_close + (market_metrics.get("atr_14", 1.5) * 1.5), 2)
             risk_dist = abs(sl - last_close)
-            # Cap Gold SL to realistic scalp/day-trade range ($1.50 min, $3.00 max)
+            # Calibrated Gold Intraday SL ($3.00 - $4.20) and TP ($6.00 - $8.50) for realistic breathing room
             if "XAU" in symbol.upper() or "GOLD" in symbol.upper():
-                risk_dist = max(1.50, min(risk_dist, 3.00))
+                risk_dist = max(2.80, min(risk_dist, 4.20))
                 sl = round(last_close + risk_dist, 2)
-            tp = round(last_close - (risk_dist * adjusted_rrr), 2)
+                tp_dist = min(max(risk_dist * adjusted_rrr, 6.00), 8.50)
+                tp = round(last_close - tp_dist, 2)
+            else:
+                tp = round(last_close - (risk_dist * adjusted_rrr), 2)
         else:
             sl = 0.0
             tp = 0.0

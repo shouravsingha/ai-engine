@@ -207,16 +207,20 @@ class TimeMachineEngine:
             edge = 0.0
 
         # Verdict calculation
-        if edge >= 12.0 and expected_r > 0.15:
+        # Hard Veto: Never approve a trade where stop probability dominates or target odds are too low
+        if p_stop >= 60.0 or p_target < 25.0 or (p_stop > p_target * 1.5):
+            verdict = "STRONG_STOP_BIAS" if p_stop >= 60.0 else "LEANS_STOP"
+            approved = False
+        elif edge >= 12.0 and expected_r > 0.15 and p_target >= p_stop:
             verdict = "STRONG_TARGET_EDGE"
             approved = True
-        elif edge >= 4.0 and expected_r >= 0.0:
+        elif edge >= 4.0 and expected_r >= 0.0 and p_target >= (p_stop * 0.8):
             verdict = "LEANS_TARGET"
             approved = True
         elif abs(edge) < 4.0:
             verdict = "COIN_FLIP_NEUTRAL"
-            # At 2.5R+ with positive expected R, allow if expected R > 0
-            approved = (expected_r > 0.05)
+            # Require positive expectancy AND target odds at least equal to stop odds
+            approved = (expected_r > 0.10 and p_target >= 40.0 and p_target >= p_stop)
         elif edge <= -12.0:
             verdict = "STRONG_STOP_BIAS"
             approved = False

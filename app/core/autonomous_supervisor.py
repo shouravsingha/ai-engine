@@ -180,16 +180,24 @@ class AutonomousFloorSupervisor:
     def _get_symbol_candles(self, symbol: str) -> pd.DataFrame:
         """Fetches candles from orchestrator market stream or synthetic historical fallback."""
         if self.orchestrator and hasattr(self.orchestrator, "market"):
-            # Check market stream candles
+            sym_key = "gold" if "XAU" in symbol else ("btc" if "BTC" in symbol else "eth")
+            # 1. Pull directly from live market stream
+            try:
+                candles = self.orchestrator.market.get_candles(sym_key, interval="15m", limit=35)
+                if candles and len(candles) >= 20:
+                    return pd.DataFrame(candles)
+            except Exception:
+                pass
+
+            # 2. Check multi_market_matrix cache
             market_matrix = getattr(self.orchestrator, "multi_market_matrix", {})
-            sym_key = "gold" if "XAU" in symbol else ("btc" if "BTC" in symbol else "forex")
             candles = market_matrix.get(sym_key, {}).get("candles_15m")
-            if candles and len(candles) >= 30:
+            if candles and len(candles) >= 20:
                 return pd.DataFrame(candles)
 
         # Fallback to database
         df_candles = self.db.get_candles_df(symbol, "M15", limit=60)
-        if not df_candles.empty and len(df_candles) >= 30:
+        if not df_candles.empty and len(df_candles) >= 20:
             return df_candles
 
         return pd.DataFrame()

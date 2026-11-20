@@ -3,6 +3,7 @@ Exness Demo & MetaTrader 5 (MT5) Real Integration Bridge
 Directly connects to local MetaTrader 5 terminal on Windows if available,
 or operates high-fidelity paper mirror synced with account #434353249.
 """
+import os
 from datetime import datetime
 from typing import Dict, Any, Optional
 from app.trading.cloud_mt5_gateway import CloudMT5Gateway
@@ -71,19 +72,18 @@ class ExnessBridge:
                 except Exception:
                     terminal_running = True
 
-                if not terminal_running:
-                    self.connected = False
-                    self.live_terminal = False
-                    self.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-                    self.status_message = f"Waiting for MT5 Terminal (Start start_ai_trader.bat or MT5)"
-                    return False
-
-                # 1. Try attaching to running MT5 instance
                 initialized = False
-                try:
-                    initialized = mt5.initialize(timeout=2500)
-                except Exception:
-                    pass
+                if not terminal_running and self.path and os.path.exists(self.path):
+                    try:
+                        initialized = mt5.initialize(path=self.path, timeout=5000)
+                    except Exception:
+                        pass
+
+                if not initialized:
+                    try:
+                        initialized = mt5.initialize(timeout=2500)
+                    except Exception:
+                        pass
                 
                 # 2. If not initialized, try explicitly with login credentials
                 if not initialized and hasattr(self, 'path') and self.path:
@@ -218,7 +218,7 @@ class ExnessBridge:
                 else:
                     self.status_message = f"🔴 TUNNEL DISCONNECTED (Laptop Closed/Offline - Last seen {int(time_since_sync)}s ago)"
 
-    def execute_live_order(self, symbol: str, side: str, volume: float = 0.01, sl: float = 0.0, tp: float = 0.0) -> Dict[str, Any]:
+    def execute_live_order(self, symbol: str, side: str, volume: float = 0.01, sl: float = 0.0, tp: float = 0.0, comment: str = "TradingAI Live Execution") -> Dict[str, Any]:
         """Executes a real order directly on the Exness MT5 terminal or 24/7 Cloud Gateway."""
         if self.balance < 5.0:
             return {"status": "rejected", "message": f"Execution halted: Balance (${self.balance:.2f}) below minimum $5.00 threshold."}
@@ -244,7 +244,8 @@ class ExnessBridge:
                 "side": side,
                 "volume": float(volume),
                 "sl": float(sl),
-                "tp": float(tp)
+                "tp": float(tp),
+                "comment": comment
             })
             print(f"[TUNNEL DISPATCH] Queued {side} {volume} {symbol} for Windows MT5 terminal!")
             return {"status": "queued", "ticket": f"TUNNEL-{int(datetime.now().timestamp())}", "message": f"Queued for Windows MT5 terminal"}
@@ -291,19 +292,19 @@ class ExnessBridge:
             point = s_info.point
             stop_level = max(getattr(s_info, 'trade_stops_level', 10), 10) * point
             spread = max(getattr(s_info, 'spread', 10), 10) * point
-            min_dist = max(stop_level * 1.5, spread * 2.0, price * 0.003)
+            broker_stop_min = max(stop_level * 1.2, spread * 1.5, 0.35)
 
             digits = s_info.digits if hasattr(s_info, 'digits') else 2
             if side.upper() == "BUY":
-                if sl == 0.0 or sl >= price or (price - sl) < min_dist:
-                    sl = price - (min_dist * 2.0)
-                if tp == 0.0 or tp <= price or (tp - price) < min_dist:
-                    tp = price + (min_dist * 4.0)
+                if sl == 0.0 or sl >= price or (price - sl) < broker_stop_min:
+                    sl = price - 2.50
+                if tp == 0.0 or tp <= price or (tp - price) < broker_stop_min:
+                    tp = price + 5.00
             else:
-                if sl == 0.0 or sl <= price or (sl - price) < min_dist:
-                    sl = price + (min_dist * 2.0)
-                if tp == 0.0 or tp >= price or (price - tp) < min_dist:
-                    tp = price - (min_dist * 4.0)
+                if sl == 0.0 or sl <= price or (sl - price) < broker_stop_min:
+                    sl = price + 2.50
+                if tp == 0.0 or tp >= price or (price - tp) < broker_stop_min:
+                    tp = price - 5.00
 
             sl = round(float(sl), digits)
             tp = round(float(tp), digits)
@@ -328,7 +329,7 @@ class ExnessBridge:
                 "tp": tp,
                 "deviation": 25,
                 "magic": 202611,
-                "comment": "TradingAI Live Execution",
+                "comment": comment,
                 "type_time": mt5.ORDER_TIME_GTC,
                 "type_filling": filling,
             }
@@ -362,12 +363,61 @@ class ExnessBridge:
             return {"status": "error", "message": str(e)}
 
     def modify_position_sl_tp(self, ticket: int, new_sl: float, new_tp: float = 0.0) -> Dict[str, Any]:
-        """
-        TRAILING STOP & SL MODIFICATION IS PERMANENTLY DISABLED PER USER DIRECTIVE.
-        Once set at order entry, SL and TP are hard and immutable.
-        """
-        print(f"[TRAILING BLOCKED] Attempt to modify SL for #{ticket} blocked. Trailing stops are permanently OFF.")
-        return {"status": "blocked", "message": "Trailing stops and SL modifications are completely disabled."}
+        """Modifies Stop Loss and Take Profit of a live MT5 position (Break-Even or Trailing Stop)."""
+        if not (MT5_AVAILABLE and self.live_terminal):
+            # Cloud (Render) mode without direct Windows MT5: queue for laptop tunnel!
+            self.command_queue.append({
+                "action": "modify",
+                "ticket": int(ticket),
+                "sl": float(new_sl),
+                "tp": float(new_tp)
+            })
+            return {"status": "queued", "ticket": ticket, "message": f"Queued SL/TP update for #{ticket}"}
+
+        try:
+            positions = mt5.positions_get(ticket=int(ticket))
+            if not positions:
+                return {"status": "error", "message": f"Position #{ticket} not found on MT5"}
+
+            pos = positions[0]
+            sym = pos.symbol
+            s_info = mt5.symbol_info(sym)
+            digits = s_info.digits if s_info else 2
+
+            final_sl = round(float(new_sl), digits)
+            final_tp = round(float(new_tp if new_tp > 0 else pos.tp), digits)
+
+            req = {
+                "action": mt5.TRADE_ACTION_SLTP,
+                "position": pos.ticket,
+                "symbol": sym,
+                "sl": final_sl,
+                "tp": final_tp,
+            }
+            res = mt5.order_send(req)
+            if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                self.refresh_balance()
+                print(f"[MT5 SL/TP MODIFIED] Ticket #{ticket} ({sym}) New SL: {final_sl} | TP: {final_tp}")
+                return {
+                    "status": "success",
+                    "ticket": ticket,
+                    "new_sl": final_sl,
+                    "new_tp": final_tp,
+                    "message": f"Successfully updated #{ticket} SL to {final_sl}"
+                }
+            else:
+                err_code = res.retcode if res else "None"
+                err_comment = res.comment if res else "Broker rejected SL/TP update"
+                print(f"[MT5 SL/TP FAILED] Ticket #{ticket} ({sym}) New SL: {final_sl} | Retcode: {err_code} ({err_comment})")
+                if err_code == 10027:
+                    print("⚠️ [MT5 WARNING] Algo Trading is DISABLED in MetaTrader 5! Press 'Algo Trading' button in MT5 (or Ctrl+E) to allow auto trades / SL modifications.")
+                return {
+                    "status": "failed",
+                    "retcode": err_code,
+                    "comment": err_comment
+                }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
     def close_position(self, ticket: int) -> Dict[str, Any]:
         """Closes a specific open position on Exness MT5 or 24/7 Cloud Gateway."""

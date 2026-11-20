@@ -6,6 +6,7 @@ and accepts interactive remote commands from the user.
 import requests
 import threading
 import time
+import hashlib
 from datetime import datetime
 from typing import Dict, Any, Optional, Callable
 
@@ -22,11 +23,34 @@ class TelegramSentinelBot:
         self.base_url = f"https://api.telegram.org/bot{self.token}"
         self.last_update_id = 0
         self.is_running = False
+        self._sent_messages_cache: Dict[str, float] = {}
+        self.dedup_cooldown_seconds: float = 900.0  # 15 minutes anti-spam deduplication
 
-    def send_message(self, message: str) -> bool:
-        """Sends an HTML formatted alert to Telegram asynchronously in background."""
+    def send_message(self, message: str, force: bool = False, dedup_key: Optional[str] = None) -> bool:
+        """
+        Sends an HTML formatted alert to Telegram asynchronously in background.
+        Strict anti-spam deduplication: identical messages within cooldown are silently dropped!
+        """
         if not self.token or not self.chat_id:
             return False
+
+        now = time.time()
+        # Clean expired cache entries to prevent memory leak
+        if len(self._sent_messages_cache) > 200:
+            self._sent_messages_cache = {
+                k: v for k, v in self._sent_messages_cache.items()
+                if (now - v) < self.dedup_cooldown_seconds
+            }
+
+        # Deduplication check
+        cache_key = dedup_key or hashlib.md5(message.strip().encode("utf-8")).hexdigest()
+        if not force:
+            last_sent = self._sent_messages_cache.get(cache_key)
+            if last_sent and (now - last_sent) < self.dedup_cooldown_seconds:
+                # Silently drop duplicate notification
+                return False
+
+        self._sent_messages_cache[cache_key] = now
 
         def _post():
             url = f"{self.base_url}/sendMessage"
@@ -111,7 +135,7 @@ Closed At: {datetime.now().strftime('%H:%M:%S UTC')}
                             if chat_id == self.chat_id and text:
                                 reply = self.handle_command(text)
                                 if reply:
-                                    self.send_message(reply)
+                                    self.send_message(reply, force=True)
                 except Exception:
                     pass
                 time.sleep(2)
@@ -139,4 +163,4 @@ Available Commands:
             return "💰 <b>Exness MT5:</b> Connected on Exness-MT5Trial7 (Account #434353249). Auto-hedging enabled."
         elif self.command_handler:
             return self.command_handler(text)
-        return "Directive processed by TradingAI Core."
+        return ""

@@ -148,14 +148,12 @@ class TestSystemIntegrity(unittest.TestCase):
         actions_small = self.brain.evaluate_open_positions(mock_pos_small, {})
         self.assertEqual(len(actions_small), 0, "Micro-profit must NOT choke trade with premature Break-Even")
 
-        # 2. In Pure TP/SL Mode (Default per user directive):
-        # AI lets the trade run completely unhindered to either TP or SL without midway meddling.
-        self.assertTrue(self.brain.pure_tp_sl_mode)
-        actions_pure = self.brain.evaluate_open_positions(mock_pos_small, {})
-        self.assertEqual(len(actions_pure), 0, "Pure TP/SL mode must not generate midway modification actions")
+        # 2. In Active Defense Mode:
+        # Break-Even and Trailing Stop are enabled.
+        self.assertFalse(self.brain.pure_tp_sl_mode)
+        self.assertTrue(self.brain.enable_trailing_stop)
 
-        # 3. When pure_tp_sl_mode is False, substantial profit (+$2.60 >= $2.50) triggers Patient Break-Even Shield with +$0.30 cushion
-        self.brain.pure_tp_sl_mode = False
+        # 3. Substantial profit (+$2.60 >= $1.60) triggers Break-Even Shield with +$0.20 cushion
         mock_pos_be = [{
             "ticket": 2001,
             "symbol": "XAUUSDm",
@@ -169,12 +167,10 @@ class TestSystemIntegrity(unittest.TestCase):
         actions_be = self.brain.evaluate_open_positions(mock_pos_be, {})
         self.assertEqual(len(actions_be), 1)
         self.assertEqual(actions_be[0]["action"], "modify_sl")
-        self.assertEqual(actions_be[0]["new_sl"], 2750.30, "Break-even must lock in $0.30 cushion")
+        self.assertEqual(actions_be[0]["new_sl"], 2750.20, "Break-even must lock in $0.20 cushion")
         self.assertIn("BREAK-EVEN SHIELD ARMED", actions_be[0]["reason"])
 
     def test_brain_wide_institutional_trailing(self):
-        # Disable pure_tp_sl_mode to test trailing logic
-        self.brain.pure_tp_sl_mode = False
         # Trade reached BE, now surges to +$4.50 profit
         mock_pos = [{
             "ticket": 2002,
@@ -192,19 +188,13 @@ class TestSystemIntegrity(unittest.TestCase):
         # Now price reaches 2754.50 (+4.50 profit)
         mock_pos[0]["current_price"] = 2754.50
         mock_pos[0]["profit"] = 4.50
-        mock_pos[0]["sl"] = 2750.30
+        mock_pos[0]["sl"] = 2750.20
 
-        # In default mode (enable_trailing_stop=False), it must NOT choke trade with trailing;
-        # keep it locked risk-free at BE and allow it to run to TP!
-        actions_default = self.brain.evaluate_open_positions(mock_pos, {})
-        self.assertEqual(len(actions_default), 0, "Default mode must NOT choke trades with continuous trailing stop")
-
-        # When trailing is explicitly enabled, it trails behind price
-        self.brain.enable_trailing_stop = True
+        # Trailing is active: it trails $1.30 behind price (2754.50 - 1.30 = 2753.20)
         actions_trail = self.brain.evaluate_open_positions(mock_pos, {})
         self.assertEqual(len(actions_trail), 1)
         self.assertEqual(actions_trail[0]["action"], "modify_sl")
-        expected_sl = round(2754.50 - 1.80, 2)  # 2752.70 ($1.80 breathing buffer)
+        expected_sl = round(2754.50 - 1.30, 2)  # 2753.20 ($1.30 breathing buffer)
         self.assertEqual(actions_trail[0]["new_sl"], expected_sl)
         self.assertIn("INSTITUTIONAL TRAIL", actions_trail[0]["reason"])
 

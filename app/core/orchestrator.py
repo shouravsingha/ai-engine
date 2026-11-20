@@ -19,6 +19,7 @@ from app.trading.orderflow_engine import OrderFlowEngine
 from app.trading.time_machine import TimeMachineEngine
 from app.trading.orb_engine import SessionORBEngine
 from app.trading.gold_strategy_engine import GoldStrategyEngine
+from app.trading.gold_scalper import GoldScalperEngine
 from app.trading.macro_pipeline import MacroPipeline
 from app.core.ai_brain import AIBrainOverseer
 from app.agency.branding_engine import BrandingEngine
@@ -49,6 +50,7 @@ class MasterOrchestrator:
         self.time_machine = TimeMachineEngine(default_replays=2500, horizon_bars=36)
         self.orb = SessionORBEngine(or_minutes=15, default_target_r=2.5)
         self.gold_engine = GoldStrategyEngine(max_sl_distance=5.00)
+        self.gold_scalper = GoldScalperEngine(symbol="XAUUSDm", max_spread=0.35, max_concurrent_scalps=3)
         self.macro = MacroPipeline(cache_ttl_seconds=30)
         self.account = DemoAccount(initial_capital=50000.0)
         self.cloud_command_queue = []
@@ -195,7 +197,8 @@ class MasterOrchestrator:
             sess = self.orb.get_current_session()
             g_orb = self.multi_market_matrix.get("gold", {}).get("orb", {})
             return f"🕒 <b>Session ORB Engine:</b>\nActive Session: {sess['name']} ({sess['key']})\nGold ORB Status: {g_orb.get('status', 'ANALYZED')}\nClosed-Bar Rule: ACTIVE"
-        return "Directive processed by TradingAI Core."
+
+        return ""
 
     def send_agent_message(self, agent_name: str, role: str, message: str):
         now_str = datetime.now().strftime("%H:%M:%S")
@@ -260,6 +263,40 @@ class MasterOrchestrator:
                         candles_1h, candles_15m, candles_5m, current_price, spread=0.25
                     )
 
+                    # 4b. Dedicated Gold Micro-Scalper Engine (M1/M5 Fast Momentum & Multi-Trades)
+                    if hasattr(self, "gold_scalper"):
+                        try:
+                            candles_1m = self.market.get_candles("gold", interval="1m", limit=30)
+                            spread_curr = 0.25
+                            try:
+                                import MetaTrader5 as mt5
+                                s_inf = mt5.symbol_info("XAUUSDm")
+                                if s_inf:
+                                    spread_curr = round(s_inf.spread * s_inf.point, 2)
+                            except Exception:
+                                pass
+                            scalp_res = self.gold_scalper.generate_scalp_opportunities(
+                                candles_1m, candles_5m, candles_1h, current_price,
+                                current_spread=spread_curr,
+                                open_positions=self.exness.open_positions
+                            )
+                            if scalp_res.get("triggered"):
+                                orders = scalp_res.get("multi_orders", [])
+                                # Single position sizing for safe risk (< $500 capital = 1 micro lot order)
+                                bal = getattr(self.exness, "balance", 50.0)
+                                if bal < 500.0 and len(orders) > 1:
+                                    orders = orders[:1]
+                                self.send_agent_message("Kai", "Scalp Specialist (PA_09)", f"⚡ GOLD SCALPER TRIGGERED: {scalp_res['side']} via {scalp_res['confluence']}. Firing {len(orders)} micro-orders.")
+                                for o in orders:
+                                    self.exness.execute_live_order(
+                                        o["symbol"], o["side"], o["lot"], o["sl"], o["tp"], comment=o["comment"]
+                                    )
+                                self.telegram.send_message(
+                                    f"⚡ <b>GOLD MULTI-SCALPER TRIGGERED</b>\nSide: <b>{scalp_res['side']}</b> @ ${current_price:,.2f}\nConfluence: {scalp_res['confluence']}\nOrders: {len(orders)} micro-lots (Staggered TPs: +$1.20, +$2.20, +$3.80)\nStop Loss: ${orders[0]['sl']:,.2f}"
+                                )
+                        except Exception as scalp_err:
+                            self.log(f"Scalp Trigger Note: {scalp_err}")
+
                 trend_4h = smc_4h.get("trend", "BULLISH")
                 trend_1h = smc_1h.get("trend", "BULLISH")
                 trend_15m = smc_15m.get("trend", "BULLISH")
@@ -313,6 +350,8 @@ class MasterOrchestrator:
                     "zone_status": zone_status,
                     "orb": orb_analysis,
                     "gold_strategy": gold_setup_res,
+                    "candles_15m": candles_15m,
+                    "candles_1h": candles_1h,
                     "source": ticker.get("source", "Live")
                 }
             except Exception as e:
@@ -329,12 +368,12 @@ class MasterOrchestrator:
                 # Prevents 0.01 lot loss from ever exceeding the allowable dollar risk ceiling
                 bal = self.exness.balance
                 if bal < 50.0:
-                    # Micro tier: Gold max $2.00 distance ($2.00 risk), BTC max $80 ($0.80 risk), ETH max $25 ($0.25 risk)
-                    max_sl_dist = 80.0 if "BTC" in symbol_exec else (2.0 if "XAU" in symbol_exec else 25.0)
+                    # Micro tier: Gold allows up to $3.50 distance ($3.50 risk ceiling), BTC max $100, ETH max $25
+                    max_sl_dist = 100.0 if "BTC" in symbol_exec else (3.5 if "XAU" in symbol_exec else 25.0)
                 elif bal < 200.0:
-                    max_sl_dist = 160.0 if "BTC" in symbol_exec else (3.0 if "XAU" in symbol_exec else 45.0)
+                    max_sl_dist = 180.0 if "BTC" in symbol_exec else (4.5 if "XAU" in symbol_exec else 45.0)
                 else:
-                    max_sl_dist = 350.0 if "BTC" in symbol_exec else (3.5 if "XAU" in symbol_exec else 60.0)
+                    max_sl_dist = 350.0 if "BTC" in symbol_exec else (5.0 if "XAU" in symbol_exec else 60.0)
 
                 # -------------------------------------------------------------
                 # 0. PRIORITY FOR GOLD: DEDICATED INSTITUTIONAL SETUP (Asian Sweep / Overlap ORB / Trend Reclaim)
@@ -357,17 +396,24 @@ class MasterOrchestrator:
                     raw_sl = float(smc_1h.get("recommended_sl", smc_1h["swing_low"]))
                     # Enforce that SL is below entry for BUY with calibrated fallback
                     if raw_sl >= entry or (entry - raw_sl) < 0.50:
-                        raw_sl = entry - (2.50 if "XAU" in symbol_exec else current_price * 0.004)
+                        raw_sl = entry - (3.00 if "XAU" in symbol_exec else current_price * 0.004)
 
-                    if (entry - raw_sl) > max_sl_dist:
-                        sl = round(entry - max_sl_dist, 2)
+                    req_sl_dist = entry - raw_sl
+                    if req_sl_dist > max_sl_dist:
+                        # Never truncate structural SL into noise zone; skip setup if risk exceeds ceiling
+                        continue
+                    if "XAU" in symbol_exec and req_sl_dist < 2.50:
+                        raw_sl = entry - 2.50
+                    sl = round(raw_sl, 2)
+
+                    if "XAU" in symbol_exec:
+                        tp_dist = min(max(abs(entry - sl) * 2.0, 4.50), 6.50)
+                        tp = round(entry + tp_dist, 2)
                     else:
-                        sl = round(raw_sl, 2)
-
-                    tp_mult = 2.4 if "XAU" in symbol_exec else 2.6
-                    min_tp_dist = (entry - sl) * tp_mult
-                    raw_tp = float(smc_1h.get("recommended_tp", fib_res.get("target_ext_1", entry + min_tp_dist)))
-                    tp = round(max(raw_tp, entry + min_tp_dist), 2)
+                        tp_mult = 2.4
+                        min_tp_dist = (entry - sl) * tp_mult
+                        raw_tp = float(smc_1h.get("recommended_tp", fib_res.get("target_ext_1", entry + min_tp_dist)))
+                        tp = round(max(raw_tp, entry + min_tp_dist), 2)
 
                 # -------------------------------------------------------------
                 # 2. BEARISH SETUP (SELL / SHORT):
@@ -380,18 +426,24 @@ class MasterOrchestrator:
                     raw_sl = float(smc_1h.get("recommended_sl", smc_1h["swing_high"]))
                     # Enforce that SL is ABOVE entry for SELL with calibrated fallback
                     if raw_sl <= entry or (raw_sl - entry) < 0.50:
-                        raw_sl = entry + (2.50 if "XAU" in symbol_exec else current_price * 0.004)
+                        raw_sl = entry + (3.00 if "XAU" in symbol_exec else current_price * 0.004)
 
-                    if (raw_sl - entry) > max_sl_dist:
-                        sl = round(entry + max_sl_dist, 2)
+                    req_sl_dist = raw_sl - entry
+                    if req_sl_dist > max_sl_dist:
+                        # Never truncate structural SL into noise zone; skip setup if risk exceeds ceiling
+                        continue
+                    if "XAU" in symbol_exec and req_sl_dist < 2.50:
+                        raw_sl = entry + 2.50
+                    sl = round(raw_sl, 2)
+
+                    if "XAU" in symbol_exec:
+                        tp_dist = min(max(abs(sl - entry) * 2.0, 4.50), 6.50)
+                        tp = round(entry - tp_dist, 2)
                     else:
-                        sl = round(raw_sl, 2)
-
-                    # Perfect Take Profit for SELL: minimum 2.4x the SL distance below entry
-                    tp_mult = 2.4 if "XAU" in symbol_exec else 2.6
-                    min_tp_dist = (sl - entry) * tp_mult
-                    raw_tp = float(smc_1h.get("recommended_tp", fib_res.get("target_ext_1", entry - min_tp_dist)))
-                    tp = round(min(raw_tp, entry - min_tp_dist), 2)
+                        tp_mult = 2.4
+                        min_tp_dist = (sl - entry) * tp_mult
+                        raw_tp = float(smc_1h.get("recommended_tp", fib_res.get("target_ext_1", entry - min_tp_dist)))
+                        tp = round(min(raw_tp, entry - min_tp_dist), 2)
 
                 # Execute if either BUY or SELL setup triggered
                 if trade_side:
@@ -583,13 +635,11 @@ class MasterOrchestrator:
 
     def evaluate_and_defend_positions(self):
         """
-        PURE 'SET AND FORGET' EXECUTION MODEL:
-        System only executes trades with pre-calculated SL and TP.
-        Once the order is placed on MT5 broker server:
-        - NO trailing stop
-        - NO break-even adjustment
-        - NO mid-trade tampering or premature exit
-        The trade waits cleanly until the broker triggers either hard TP or hard SL!
+        Active AI Brain position defense:
+        - Evaluates open positions on Exness MT5.
+        - Triggers Break-Even Risk-Free Shield once profit threshold is reached (+cushion).
+        - Executes Dynamic Multi-Tier Trailing Stop to lock in running gains.
+        - Anti-Churn Cooldown Tracking: 15-minute freeze on symbol after position closure.
         """
         # Track MT5 closed positions between cycles to trigger anti-churn cooldown
         current_open_symbols = {p.get("symbol") for p in self.exness.open_positions if p.get("symbol")}
@@ -600,8 +650,87 @@ class MasterOrchestrator:
                 self.log(f"🛡️ ANTI-CHURN COOLDOWN: Position on {cs} settled. 15-minute freeze engaged.")
                 self.send_agent_message("Marcus", "Risk Officer (PA_02)", f"🛡️ {cs} trade settled. Cooldown active for 15 minutes.")
         self._last_known_open_symbols = current_open_symbols
-        # Absolutely nothing else to do. Trade runs untouched to TP or SL!
-        return
+
+        if not self.exness.open_positions:
+            return
+
+        # DEDICATED SCALPER PROFIT HARVESTER & BREAK-EVEN RUNNER (User Directive)
+        # 1. Close Scalp-1 when quick cash target (+$1.10+) is reached
+        # 2. Close Scalp-2 when core target (+$2.00+) is reached
+        # 3. Move remaining Scalp-3 Runner to Break-Even (100% Risk Free)
+        for pos in list(self.exness.open_positions):
+            comment = str(pos.get("comment", "")).upper()
+            ticket = pos.get("ticket")
+            profit = float(pos.get("profit", 0.0))
+            open_price = float(pos.get("open_price", 0.0))
+            side = str(pos.get("side", "BUY")).upper()
+            curr_sl = float(pos.get("sl", 0.0))
+
+            # Auto Harvest Scalp-1 in Profit
+            if "SCALP-1" in comment and profit >= 1.10:
+                self.log(f"⚡ SCALP-1 PROFIT HARVEST: Ticket #{ticket} profit +${profit:.2f}. Auto-closing now.")
+                c_res = self.exness.close_position(ticket)
+                if c_res.get("status") in ("success", "queued"):
+                    self.telegram.send_message(f"💰 <b>SCALP-1 PROFIT SECURED</b>\nTicket #{ticket} closed with <b>+${profit:.2f}</b> profit!")
+                continue
+
+            # Auto Harvest Scalp-2 in Profit
+            if "SCALP-2" in comment and profit >= 2.00:
+                self.log(f"⚡ SCALP-2 PROFIT HARVEST: Ticket #{ticket} profit +${profit:.2f}. Auto-closing now.")
+                c_res = self.exness.close_position(ticket)
+                if c_res.get("status") in ("success", "queued"):
+                    self.telegram.send_message(f"💰 <b>SCALP-2 PROFIT SECURED</b>\nTicket #{ticket} closed with <b>+${profit:.2f}</b> profit!")
+                continue
+
+            # Auto Lock Remaining Scalp / Runner to Break-Even once in profit >= +$1.50
+            if "SCALP" in comment and profit >= 1.50:
+                can_be = False
+                new_sl = open_price
+                if side == "BUY" and (curr_sl == 0.0 or curr_sl < open_price):
+                    new_sl = round(open_price + 0.15, 2)
+                    can_be = True
+                elif side == "SELL" and (curr_sl == 0.0 or curr_sl > open_price):
+                    new_sl = round(open_price - 0.15, 2)
+                    can_be = True
+
+                if can_be:
+                    m_res = self.exness.modify_position_sl_tp(ticket, new_sl)
+                    if m_res.get("status") in ("success", "queued"):
+                        self.log(f"🛡️ SCALP BREAK-EVEN LOCKED: Ticket #{ticket} SL moved to {new_sl} (+${profit:.2f} profit).")
+                        self.telegram.send_message(f"🛡️ <b>SCALP BREAK-EVEN SECURED</b>\nTicket #{ticket} SL moved to {new_sl} (+${profit:.2f} profit).\nRunner trade is now 100% Risk-Free!")
+
+        actions = self.brain.evaluate_open_positions(
+            self.exness.open_positions,
+            self.multi_market_matrix
+        )
+
+        for act in actions:
+            action_type = act.get("action")
+            
+            # MODIFY SL / TRAILING / BREAKEVEN
+            if action_type == "modify_sl":
+                m_res = self.exness.modify_position_sl_tp(act["ticket"], act["new_sl"], act.get("new_tp", 0.0))
+                if m_res.get("status") in ("success", "queued"):
+                    self.send_agent_message("Marcus", "Risk Officer (PA_02)", act["reason"])
+                    self.send_agent_message("AI Brain", "Neural Overseer", f"🛡️ DEFENSE TRIGGER: {act['symbol']} #{act['ticket']} protected.")
+                    self.telegram.send_message(f"🛡️ <b>AI POSITION DEFENSE:</b>\n{act['reason']}")
+                    self.log(f"🛡️ Position #{act['ticket']} ({act['symbol']}): {act['reason']}")
+                elif m_res.get("retcode") == 10027:
+                    if not getattr(self, "_algo_warned", False):
+                        self.send_agent_message("Marcus", "Risk Officer (PA_02)", "⚠️ MT5 এ 'Algo Trading' (Ctrl+E) বন্ধ রয়েছে। ব্রেকেভেন ও ট্রেইলিং লক করতে টার্মিনালে 'Algo Trading' বাটনটি ক্লিক করে চালু করুন।")
+                        self.log("⚠️ MT5 AutoTrading is disabled by client (Retcode 10027). Please enable Algo Trading in MT5.")
+                        self._algo_warned = True
+
+            # SMART PROFIT HARVEST / EMERGENCY CIRCUIT BREAKER
+            elif action_type == "close_position":
+                c_res = self.exness.close_position(act["ticket"])
+                if c_res.get("status") in ("success", "queued"):
+                    sym = act.get("symbol", "XAUUSDm")
+                    self.symbol_cooldowns[sym] = time.time() + 900.0  # 15 minutes anti-churn cooldown
+                    self.send_agent_message("Marcus", "Risk Guardian (PA_02)", act["reason"])
+                    self.send_agent_message("AI Brain", "Neural Overseer", f"⚡ DEFENSE CLOSE: {sym} #{act['ticket']} settled. 15m Anti-Churn Cooldown engaged.")
+                    self.telegram.send_message(f"⚡ <b>AI POSITION DEFENSE EXIT:</b>\n{act['reason']}\n🛡️ <i>15-Minute Anti-Churn Cooldown engaged on {sym}.</i>")
+                    self.log(f"⚡ Position #{act['ticket']} ({sym}): {act['reason']}")
 
     def start_background_loop(self):
         if self.is_running:
@@ -623,14 +752,13 @@ class MasterOrchestrator:
             counter = 0
             while True:
                 try:
-                    # Every 3 seconds: refresh balance & evaluate trade defenses (Break-Even & Trailing Stop)
+                    # Fast cycle: refresh balance & evaluate trade defenses (Break-Even & Partial TP)
                     self.exness.refresh_balance()
                     self.evaluate_and_defend_positions()
 
                     counter += 1
-                    # Full market scan every 15 seconds (every 5 cycles)
-                    if counter % 5 == 0:
-                        self.run_simultaneous_scan()
+                    # Real-time scan (Gold Scalper M1/M5 & Intraday M15) - Direct MT5 RAM (ultra-fast 1ms)
+                    self.run_simultaneous_scan()
                     
                     if counter % 40 == 0:
                         gold_p = self.multi_market_matrix.get("gold", {}).get("price", 2748.20)
@@ -641,6 +769,6 @@ class MasterOrchestrator:
 
                 except Exception as e:
                     self.log(f"Cycle Note: {str(e)}")
-                time.sleep(3.0)
+                time.sleep(1.5)
 
         threading.Thread(target=loop, daemon=True).start()

@@ -32,10 +32,10 @@ class AIBrainOverseer:
             "cooldown_until": 0.0, # timestamp
             "daily_drawdown_limit": 3.50, # USD max loss per session
             "daily_pnl_tracker": 0.0,
-            "risk_free_mode": "PURE_IMMUTABLE_TP_SL"
+            "risk_free_mode": "ACTIVE_BREAKEVEN_AND_TRAILING"
         }
-        self.pure_tp_sl_mode = True # User directive: Let trade run strictly to TP or SL without midway modification
-        self.enable_trailing_stop = False # PERMANENTLY DISABLED: Never trail or choke running trades
+        self.pure_tp_sl_mode = False # Enabled: Active Break-Even and Trailing Stop protection
+        self.enable_trailing_stop = True # ACTIVE: Multi-tier dynamic trailing stop
         self.enable_emergency_close = False # Trade entry holei wait korbe
         self.emergency_loss_limit = -1.25
         self.managed_positions_state: Dict[int, Dict[str, Any]] = {}
@@ -198,11 +198,12 @@ class AIBrainOverseer:
             # Once Break-Even is locked, the position has ZERO loss risk and is allowed
             # to breathe freely towards the full Take-Profit (TP) without trailing choke.
             # -------------------------------------------------------------
-            min_be_profit = 2.50 if ("XAU" in symbol or "BTC" in symbol) else 1.50
+            # Lower BE threshold for Gold/Micro accounts to $0.95 to arm risk-free protection early
+            min_be_profit = 0.95 if "XAU" in symbol else (1.40 if "BTC" in symbol else 0.80)
             if profit >= min_be_profit and not state.get("breakeven_set"):
                 can_shield = False
                 new_sl = open_price
-                cushion = 0.30 if "XAU" in symbol else 0.15
+                cushion = 0.20 if "XAU" in symbol else 0.10
                 if side == "BUY" and (current_sl == 0.0 or current_sl < open_price):
                     new_sl = round(open_price + cushion, digits)
                     can_shield = True
@@ -237,9 +238,9 @@ class AIBrainOverseer:
             # Trailing is disabled by default to prevent choking trades on natural retracements.
             # Holding Break-Even guarantees zero downside risk while allowing full TP target capture.
             # -------------------------------------------------------------
-            min_trail_profit = 4.00 if ("XAU" in symbol or "BTC" in symbol) else 2.50
-            trail_buffer = 1.80 if "XAU" in symbol else 1.00
-            min_step = 0.50 if "XAU" in symbol else 0.25
+            min_trail_profit = 2.60 if ("XAU" in symbol or "BTC" in symbol) else 1.80
+            trail_buffer = 1.30 if "XAU" in symbol else 0.80
+            min_step = 0.25 if "XAU" in symbol else 0.15
 
             if self.enable_trailing_stop and profit >= min_trail_profit and state.get("breakeven_set"):
                 last_trailed = state.get("last_trailed_sl", current_sl)
@@ -315,3 +316,6 @@ class AIBrainOverseer:
             "psychology": self.psychology,
             "recent_audits": self.brain_audits[:10]
         }
+
+    # Backward compatibility alias
+    evaluate_managed_positions = evaluate_open_positions

@@ -8,3 +8,5 @@ venv/
 backups/
 *.db
 data/exports/
+frontend/node_modules/
+frontend/npm-cache/

@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 
@@ -9,6 +10,12 @@ from app.core.orchestrator import MasterOrchestrator
 app = FastAPI(title="TradingAI · Real-Time Animated OrderFlow & 3D Office with AI Brain")
 orchestrator = MasterOrchestrator()
 cloud_command_queue = orchestrator.cloud_command_queue
+
+# Mount modern standalone React SPA assets if built
+_frontend_dist = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+_frontend_assets = os.path.join(_frontend_dist, "assets")
+if os.path.exists(_frontend_assets):
+    app.mount("/assets", StaticFiles(directory=_frontend_assets), name="assets")
 
 from app.trading.exness_bridge import start_cloud_tunnel_daemon
 
@@ -79,6 +86,14 @@ def pause_gen3_supervisor():
 def resume_gen3_supervisor():
     orchestrator.supervisor.resume()
     return JSONResponse({"status": "resumed"})
+
+@app.post("/api/circuit_breaker/reset")
+def reset_circuit_breaker():
+    orchestrator.circuit_breaker.reset_kill_switch()
+    orchestrator.supervisor.peak_equity = float(getattr(orchestrator.exness, "equity", 200.0))
+    orchestrator.risk.kill_switch_triggered = False
+    orchestrator.risk.peak_equity = orchestrator.supervisor.peak_equity
+    return JSONResponse({"status": "reset_successful", "peak_equity": orchestrator.supervisor.peak_equity})
 
 @app.post("/api/gen3/supervisor/cycle")
 def manual_gen3_cycle():
@@ -242,10 +257,10 @@ def direct_execute(data: dict):
     symbol = data.get("symbol", "XAUUSDm")
     side = data.get("side", "BUY")
     price = float(data.get("price", 2748.20))
-    # Calibrated, realistic institutional SL/TP (Option A: $5.00 SL / 50 pips, $12.00 TP / 120 pips, 2.4R)
+    # Calibrated, high-probability scalp & intraday SL/TP ($2.50 SL, $5.00 TP, 2.0R)
     if "XAU" in symbol.upper() or "GOLD" in symbol.upper():
-        sl_dist = 5.00  # Wide breathing room Gold SL ($5.00 / 50 pips)
-        tp_dist = 12.00  # Institutional target TP ($12.00 / 120 pips, 2.4R)
+        sl_dist = 2.50  # Balanced Gold SL ($2.50 / 25 pips)
+        tp_dist = 5.00  # High-probability scalp & day-trade TP ($5.00 / 50 pips, 2.0R)
         sl = round(price - sl_dist, 2) if side == "BUY" else round(price + sl_dist, 2)
         tp = round(price + tp_dist, 2) if side == "BUY" else round(price - tp_dist, 2)
     elif "BTC" in symbol.upper():
@@ -576,6 +591,9 @@ def get_dxy_chart_feed(interval: str = "15m", limit: int = 60):
 
 @app.get("/", response_class=HTMLResponse)
 def index():
+    dist_index = os.path.join(os.path.dirname(__file__), "frontend", "dist", "index.html")
+    if os.path.exists(dist_index):
+        return FileResponse(dist_index)
     return """
     <!DOCTYPE html>
     <html lang="en">

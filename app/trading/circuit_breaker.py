@@ -141,6 +141,12 @@ class AutonomousCircuitBreaker:
             "reason": "All circuit breakers clear."
         }
 
+    def reset_kill_switch(self):
+        """Manually or autonomously resets the emergency kill switch."""
+        self.kill_switch_active = False
+        self.stepdown_active = False
+        self.consecutive_losses = 0
+
     def get_status(self) -> Dict[str, Any]:
         now = time.time()
         cooldown_rem = max(0, int(self.cooldown_until - now))
