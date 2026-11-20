@@ -340,7 +340,7 @@ def direct_execute(data: dict):
     return {"status": "success", "order": order, "mt5_execution": mt5_res}
 
 @app.get("/api/gold/chart")
-def get_gold_chart_feed(interval: str = "15m", limit: int = 60):
+def get_gold_chart_feed(interval: str = "15m", limit: int = 350):
     try:
         binance_interval = "15m"
         if interval in ("5m", "5M"):

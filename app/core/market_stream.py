@@ -89,6 +89,7 @@ class MarketStream:
                 if rates is not None and len(rates) >= 5:
                     return [
                         {
+                            "time": int(r["time"]),
                             "open": float(r["open"]),
                             "high": float(r["high"]),
                             "low": float(r["low"]),
